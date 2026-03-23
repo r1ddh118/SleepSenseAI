@@ -1,0 +1,6 @@
+﻿SID,AGE,GENDER,BMI,OAHI,AHI,Mean_SaO2,Arousal Index,MEDICAL_HISTORY,Sleep_Disorders
+S002,65.9,M,27,19,19,91.0%,98,"Asthma, Body Pain, GERD, Hypertension, Sleep Apnea",OSA
+S003,29.38,F,51,34,37,95.0%,28,None,"snoring, sleep apnea, difficulty breathing, snorts"
+S004,55.66,F,41,63,99,89.0%,109,"Arrhythmia, Body Pain, Depression, Dyspnea, GERD",difficulty breathing
+S005,49.12,F,43,19,20,95.0%,28,"Asthma, Body Pain, Depression, Diabetes, Dyspnea, GERD, Sleep Apnea",OSA
+S006,36.91,F,22,4,5,97.0%,34,"Depression, Sleep Apnea",OSA
