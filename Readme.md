@@ -1,13 +1,13 @@
-# 💤 Sleep Detection AI Model
+# Sleep Detection AI Model
 
-## 📌 Overview
+## Overview
 This project aims to develop an AI-based system that detects and scores a person's sleep quality using physiological and motion data.
 
 The system uses an ESP32 microcontroller connected to sensors to collect real-time data, which is then processed using machine learning algorithms to analyze sleep patterns.
 
 ---
 
-## 🎯 Objectives
+## Objectives
 - Monitor sleep using heart rate and body movement
 - Analyze collected data using AI/ML models
 - Generate a sleep quality score
@@ -15,7 +15,7 @@ The system uses an ESP32 microcontroller connected to sensors to collect real-ti
 
 ---
 
-## 🧠 How It Works
+## How It Works
 
 1. **Data Collection**
    - Heart Rate Sensor → captures pulse data
@@ -38,7 +38,7 @@ The system uses an ESP32 microcontroller connected to sensors to collect real-ti
 
 ---
 
-## 🛠️ Hardware Requirements
+## Hardware Requirements
 - ESP32
 - Heart Rate Sensor (e.g., MAX30100 / MAX30102)
 - Accelerometer (e.g., MPU6050)
@@ -47,7 +47,7 @@ The system uses an ESP32 microcontroller connected to sensors to collect real-ti
 
 ---
 
-## 💻 Software Requirements
+## Software Requirements
 - Arduino IDE
 - Python (for AI model)
 - Libraries:
@@ -58,7 +58,7 @@ The system uses an ESP32 microcontroller connected to sensors to collect real-ti
 
 ---
 
-## 📊 Features
+## Features
 - Real-time heart rate monitoring
 - Motion detection using accelerometer
 - Sleep stage classification
@@ -66,7 +66,7 @@ The system uses an ESP32 microcontroller connected to sensors to collect real-ti
 
 ---
 
-## 🚀 Setup Instructions
+## Setup Instructions
 
 ### 1. Hardware Setup
 - Connect heart rate sensor to ESP32
@@ -88,4 +88,4 @@ The system uses an ESP32 microcontroller connected to sensors to collect real-ti
 
 ---
 
-## 📁 Project Structure
+## Project Structure
