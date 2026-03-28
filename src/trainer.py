@@ -10,17 +10,30 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 
-from .models.base_model import ModelMetrics
-from .models.sklearn_models import (
-    AdaBoostSleepModel,
-    ExtraTreesSleepModel,
-    KNNSleepModel,
-    LogisticSleepModel,
-    MLPSleepModel,
-    RandomForestSleepModel,
-    SVCSleepModel,
-)
-from .models.tensorflow_ann_model import TensorFlowANNSleepModel
+try:
+    from .models.base_model import ModelMetrics
+    from .models.sklearn_models import (
+        AdaBoostSleepModel,
+        ExtraTreesSleepModel,
+        KNNSleepModel,
+        LogisticSleepModel,
+        MLPSleepModel,
+        RandomForestSleepModel,
+        SVCSleepModel,
+    )
+    from .models.tensorflow_ann_model import TensorFlowANNSleepModel
+except ImportError:  # pragma: no cover - supports direct script execution
+    from models.base_model import ModelMetrics
+    from models.sklearn_models import (
+        AdaBoostSleepModel,
+        ExtraTreesSleepModel,
+        KNNSleepModel,
+        LogisticSleepModel,
+        MLPSleepModel,
+        RandomForestSleepModel,
+        SVCSleepModel,
+    )
+    from models.tensorflow_ann_model import TensorFlowANNSleepModel
 
 
 class SleepModelTrainer:
@@ -58,7 +71,11 @@ class SleepModelTrainer:
         X = train_df[feature_cols]
         y = train_df[target_col].astype(int)
         if y.nunique() < 2:
-            raise ValueError("Need at least two target classes.")
+            counts = y.value_counts().to_dict()
+            raise ValueError(
+                f"Need at least two target classes, but found {y.nunique()} in "
+                f"'{target_col}' with counts {counts}."
+            )
 
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.4, stratify=y, random_state=42

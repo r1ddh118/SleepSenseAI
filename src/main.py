@@ -6,8 +6,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from .preprocessing import SleepPreprocessor
-from .trainer import SleepModelTrainer
+try:
+    from .preprocessing import SleepPreprocessor
+    from .trainer import SleepModelTrainer
+except ImportError:  # pragma: no cover - supports direct script execution
+    from preprocessing import SleepPreprocessor
+    from trainer import SleepModelTrainer
 
 
 class SleepSenseApp:
@@ -22,16 +26,25 @@ class SleepSenseApp:
         )
         self.trainer = SleepModelTrainer()
 
-    def train(self) -> dict:
+    def preprocess(self) -> dict:
         preprocess_paths = self.preprocessor.preprocess_training_data()
-        processed_df = pd.read_csv(preprocess_paths["processed_training_csv"])
-        eda_paths = self.preprocessor.run_eda_on_processed(processed_df)
+        return {
+            "preprocessing": preprocess_paths,
+        }
+
+    def train(self) -> dict:
+        processed_df = self.preprocessor.load_preprocessed_training_data()
         train_paths = self.trainer.train_and_select(processed_df, self.outdir)
 
         return {
-            "preprocessing": preprocess_paths,
-            "eda": eda_paths,
             "training": train_paths,
+        }
+
+    def eda(self) -> dict:
+        processed_df = self.preprocessor.load_preprocessed_training_data()
+        eda_paths = self.preprocessor.run_eda_on_processed(processed_df)
+        return {
+            "eda": eda_paths,
         }
 
     def predict(self, model_pickle: Path, sensor_csv: Path, sid: str, output_csv: Path) -> dict:
@@ -56,10 +69,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="SleepSense OOP model trainer and predictor")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    train = sub.add_parser("train", help="Preprocess + EDA + train 8 models + save best model")
+    preprocess = sub.add_parser("preprocess", help="Build and save preprocessed training data")
+    preprocess.add_argument("--dataset-dir", type=Path, default=Path("datasets"))
+    preprocess.add_argument("--participant-csv", type=Path, default=Path("datasets/participant_info.csv"))
+    preprocess.add_argument("--outdir", type=Path, default=Path("artifacts"))
+
+    train = sub.add_parser("train", help="Train 8 models from saved preprocessed data")
     train.add_argument("--dataset-dir", type=Path, default=Path("datasets"))
     train.add_argument("--participant-csv", type=Path, default=Path("datasets/participant_info.csv"))
     train.add_argument("--outdir", type=Path, default=Path("artifacts"))
+
+    eda = sub.add_parser("eda", help="Run EDA from saved preprocessed data")
+    eda.add_argument("--dataset-dir", type=Path, default=Path("datasets"))
+    eda.add_argument("--participant-csv", type=Path, default=Path("datasets/participant_info.csv"))
+    eda.add_argument("--outdir", type=Path, default=Path("artifacts"))
 
     pred = sub.add_parser("predict", help="Preprocess input sensor CSV + predict + save output CSV")
     pred.add_argument("--dataset-dir", type=Path, default=Path("datasets"))
@@ -78,8 +101,14 @@ def main() -> None:
 
     app = SleepSenseApp(args.dataset_dir, args.participant_csv, args.outdir)
 
-    if args.command == "train":
+    if args.command == "preprocess":
+        result = app.preprocess()
+        print(json.dumps(result, indent=2))
+    elif args.command == "train":
         result = app.train()
+        print(json.dumps(result, indent=2))
+    elif args.command == "eda":
+        result = app.eda()
         print(json.dumps(result, indent=2))
     elif args.command == "predict":
         result = app.predict(

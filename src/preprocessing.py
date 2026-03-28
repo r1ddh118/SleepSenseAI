@@ -5,7 +5,10 @@ from typing import Dict
 
 import pandas as pd
 
-from .data_processor import SleepDataProcessor
+try:
+    from .data_processor import SleepDataProcessor
+except ImportError:  # pragma: no cover - supports direct script execution
+    from data_processor import SleepDataProcessor
 
 
 class SleepPreprocessor:
@@ -16,6 +19,14 @@ class SleepPreprocessor:
         self.participant_csv = Path(participant_csv)
         self.outdir = Path(outdir)
         self.processor = SleepDataProcessor(dataset_dir=self.dataset_dir, participant_csv=self.participant_csv)
+
+    def training_output_paths(self) -> Dict[str, str]:
+        raw_path = self.outdir / "preprocessed_raw_features.csv"
+        processed_path = self.outdir / "preprocessed_training_data.csv"
+        return {
+            "raw_features_csv": str(raw_path),
+            "processed_training_csv": str(processed_path),
+        }
 
     def _clean_feature_table(self, df: pd.DataFrame) -> pd.DataFrame:
         cleaned = df.copy()
@@ -42,10 +53,16 @@ class SleepPreprocessor:
         raw_features.to_csv(raw_path, index=False)
         cleaned.to_csv(processed_path, index=False)
 
-        return {
-            "raw_features_csv": str(raw_path),
-            "processed_training_csv": str(processed_path),
-        }
+        return self.training_output_paths()
+
+    def load_preprocessed_training_data(self) -> pd.DataFrame:
+        processed_path = Path(self.training_output_paths()["processed_training_csv"])
+        if not processed_path.exists():
+            raise FileNotFoundError(
+                f"Preprocessed training data not found at {processed_path}. "
+                "Run the 'preprocess' command first."
+            )
+        return pd.read_csv(processed_path)
 
     def preprocess_prediction_data(self, sensor_csv: Path, sid: str, output_csv: Path | None = None) -> pd.DataFrame:
         row_df = self.processor.build_single_prediction_row(sensor_csv=sensor_csv, sid=sid)
