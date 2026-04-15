@@ -4,6 +4,7 @@ import os
 from typing import Optional
 
 import numpy as np
+import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
@@ -25,8 +26,15 @@ class TensorFlowANNSleepModel(BaseSleepModel):
 
     @staticmethod
     def _build_preprocessor(X) -> ColumnTransformer:
-        categorical_cols = [c for c in X.columns if X[c].dtype == "object"]
-        numeric_cols = [c for c in X.columns if c not in categorical_cols]
+        categorical_cols = [
+            c
+            for c in X.columns
+            if pd.api.types.is_object_dtype(X[c])
+            or pd.api.types.is_string_dtype(X[c])
+            or pd.api.types.is_categorical_dtype(X[c])
+            or pd.api.types.is_bool_dtype(X[c])
+        ]
+        numeric_cols = [c for c in X.columns if pd.api.types.is_numeric_dtype(X[c])]
 
         return ColumnTransformer(
             transformers=[
