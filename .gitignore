@@ -15,6 +15,7 @@ dist/
 *.egg-info/
 .eggs/
 pip-wheel-metadata/
+*.log
 
 # Test and tooling caches
 .pytest_cache/
@@ -36,6 +37,19 @@ Thumbs.db
 # Project-generated artifacts
 artifacts/
 
+# Local DB / secrets
+sleepsense.db
+*.db
+
+# Node (Phase 3)
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
 # Local environment files
 .env
 .env.*
+
+# Local tooling state
+.codex
+.sixth/
