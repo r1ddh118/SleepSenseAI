@@ -1,0 +1,15 @@
+[Unit]
+Description=SleepSense AI FastAPI Server
+After=network.target redis-server.service mosquitto.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/sleepsense-ai/api
+Environment=PATH=/home/pi/sleepsense-ai/.venv/bin:/usr/bin
+ExecStart=/home/pi/sleepsense-ai/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

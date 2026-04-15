@@ -32,10 +32,14 @@ class SleepDataProcessor:
 
     @staticmethod
     def _extract_sid(file_path: Path) -> str:
+        # Preferred: compressed_<SID>_whole_df.csv (supports DREAMT numeric IDs, P01, S001, etc.)
+        m = re.search(r"compressed_(.+?)_whole_df\.csv$", file_path.name, re.IGNORECASE)
+        if m:
+            return m.group(1)
         match = re.search(r"(S\d{3})", file_path.name)
-        if not match:
-            raise ValueError(f"Could not infer SID from filename: {file_path.name}")
-        return match.group(1)
+        if match:
+            return match.group(1)
+        raise ValueError(f"Could not infer SID from filename: {file_path.name}")
 
     @staticmethod
     def _build_sleep_deprivation_label(info: pd.DataFrame) -> pd.Series:

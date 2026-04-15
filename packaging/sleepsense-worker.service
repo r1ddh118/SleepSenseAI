@@ -1,0 +1,15 @@
+[Unit]
+Description=SleepSense AI Celery Worker
+After=network.target redis-server.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/sleepsense-ai/api
+Environment=PATH=/home/pi/sleepsense-ai/.venv/bin:/usr/bin
+ExecStart=/home/pi/sleepsense-ai/.venv/bin/celery -A tasks worker --loglevel=info
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
