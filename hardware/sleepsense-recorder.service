@@ -1,0 +1,15 @@
+[Unit]
+Description=SleepSense AI hardware recorder (Phase 1 stub)
+After=network.target mosquitto.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/sleepsense-ai
+Environment=PATH=/home/pi/sleepsense-ai/.venv/bin:/usr/bin
+# Replace with: python -m hardware.e4_streamer or your session_manager entrypoint
+ExecStart=/bin/sleep infinity
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
