@@ -2,15 +2,22 @@ import { Link } from "react-router";
 import { Calendar, Clock, Activity } from "lucide-react";
 import { RiskBadge } from "./RiskBadge";
 import type { Session } from "../data/mockData";
+import { normalizeStoredSession } from "../data/sessionUtils";
 
 interface SessionCardProps {
-  session: Session;
+  session: Session | null | undefined;
 }
 
 export function SessionCard({ session }: SessionCardProps) {
-  const sleepEfficiency = session.features?.sleep_efficiency ?? 0;
-  const averageHeartRate = session.features?.HR_mean ?? 0;
-  const sleepStages = session.sleepStages ?? { wake: 0, n1: 0, n2: 0, n3: 0, rem: 0 };
+  const normalizedSession = normalizeStoredSession(session);
+
+  if (!normalizedSession) {
+    return null;
+  }
+
+  const sleepEfficiency = normalizedSession.features.sleep_efficiency ?? 0;
+  const averageHeartRate = normalizedSession.features.HR_mean ?? 0;
+  const sleepStages = normalizedSession.sleepStages;
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -23,24 +30,24 @@ export function SessionCard({ session }: SessionCardProps) {
 
   return (
     <Link
-      to={`/session/${session.id}`}
+      to={`/session/${normalizedSession.id}`}
       className="block bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5 hover:shadow-lg transition-shadow"
     >
       <div className="flex items-start justify-between mb-3">
         <div>
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-lg">Session {session.sid}</h3>
+          <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-lg">Session {normalizedSession.sid}</h3>
           <div className="flex items-center gap-4 mt-1 text-sm text-gray-600 dark:text-gray-400">
             <span className="flex items-center gap-1">
               <Calendar className="w-4 h-4" />
-              {formatDate(session.date)}
+              {formatDate(normalizedSession.date)}
             </span>
             <span className="flex items-center gap-1">
               <Clock className="w-4 h-4" />
-              {Math.floor(session.duration / 60)}h {session.duration % 60}m
+              {Math.floor(normalizedSession.duration / 60)}h {normalizedSession.duration % 60}m
             </span>
           </div>
         </div>
-        <RiskBadge probability={session.riskProbability} size="sm" />
+        <RiskBadge probability={normalizedSession.riskProbability} size="sm" />
       </div>
 
       <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">

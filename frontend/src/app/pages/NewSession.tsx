@@ -3,6 +3,7 @@ import { ArrowLeft, Wifi, Activity, CheckCircle2, Loader2, LogOut, User } from "
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useAuth } from "../context/AuthContext";
 import { useState } from "react";
+import { readStoredSessions } from "../data/sessionUtils";
 
 export function NewSession() {
   const { user, logout } = useAuth();
@@ -41,20 +42,42 @@ export function NewSession() {
   };
 
   const savePatientSession = (id: string) => {
+    const durationMinutes = 432;
+    const sleepEfficiency = Math.floor(Math.random() * 30) + 65;
+    const riskProbability = Math.random();
     const session = {
       id,
+      sid: id,
       patientName: user?.name || "Unknown",
       date: new Date().toISOString().split("T")[0],
-      duration: "7.2h",
-      sleepQuality: Math.floor(Math.random() * 30) + 65, // Random quality between 65-95
-      risk: Math.random() > 0.7 ? "moderate" : Math.random() > 0.4 ? "low" : "high",
-      riskScore: Math.random() * 100,
+      duration: durationMinutes,
+      sleepQuality: sleepEfficiency,
+      riskProbability,
+      risk:
+        riskProbability >= 0.7 ? "high" : riskProbability >= 0.4 ? "moderate" : "low",
+      riskScore: riskProbability * 100,
+      riskLevel:
+        riskProbability >= 0.7 ? "high" : riskProbability >= 0.4 ? "moderate" : "low",
+      status: "completed",
+      sleepStages: {
+        wake: Math.floor(Math.random() * 15) + 5,
+        n1: Math.floor(Math.random() * 10) + 8,
+        n2: Math.floor(Math.random() * 20) + 35,
+        n3: Math.floor(Math.random() * 15) + 8,
+        rem: Math.floor(Math.random() * 12) + 10,
+      },
+      features: {
+        HR_mean: 60 + Math.random() * 20,
+        HR_std: 6 + Math.random() * 8,
+        EDA_mean: 2 + Math.random() * 3,
+        TEMP_mean: 33 + Math.random() * 1.5,
+        event_rate: Math.random() * 0.12,
+        sleep_efficiency: sleepEfficiency,
+      },
       createdAt: new Date().toISOString(),
     };
 
-    const existingSessions = JSON.parse(
-      localStorage.getItem(`sessions_${user?.email}`) || "[]"
-    );
+    const existingSessions = readStoredSessions(`sessions_${user?.email}`);
     existingSessions.push(session);
     localStorage.setItem(`sessions_${user?.email}`, JSON.stringify(existingSessions));
   };

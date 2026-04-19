@@ -5,6 +5,7 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { useAuth } from "../context/AuthContext";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useState, useEffect } from "react";
+import { readStoredSessions } from "../data/sessionUtils";
 
 interface Alert {
   id: string;
@@ -27,9 +28,7 @@ export function PatientDashboard() {
   }, [user?.email]);
 
   // Get patient's own sessions
-  const patientSessions = JSON.parse(
-    localStorage.getItem(`sessions_${user?.email}`) || "[]"
-  );
+  const patientSessions = readStoredSessions(`sessions_${user?.email}`);
 
   const markAlertAsRead = (alertId: string) => {
     const updatedAlerts = alerts.map((alert) =>
@@ -40,9 +39,9 @@ export function PatientDashboard() {
   };
 
   // Calculate sleep quality trend
-  const trendData = patientSessions.slice(-7).map((session: any, index: number) => ({
+  const trendData = patientSessions.slice(-7).map((session, index: number) => ({
     day: `Day ${index + 1}`,
-    quality: session.sleepQuality || Math.floor(Math.random() * 40) + 60,
+    quality: Math.round(session.features.sleep_efficiency || Math.floor(Math.random() * 40) + 60),
   }));
 
   const unreadAlerts = alerts.filter((a) => !a.read).length;
@@ -172,7 +171,7 @@ export function PatientDashboard() {
             <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">
               {patientSessions.length > 0
                 ? Math.round(
-                    patientSessions.reduce((acc: number, s: any) => acc + (s.sleepQuality || 75), 0) /
+                    patientSessions.reduce((acc: number, s) => acc + s.features.sleep_efficiency, 0) /
                       patientSessions.length
                   )
                 : 0}
@@ -190,7 +189,13 @@ export function PatientDashboard() {
               <Moon className="w-5 h-5 text-purple-500" />
             </div>
             <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-              {patientSessions.length > 0 ? "7.2h" : "0h"}
+              {patientSessions.length > 0
+                ? `${(
+                    patientSessions.reduce((acc, session) => acc + session.duration, 0) /
+                    patientSessions.length /
+                    60
+                  ).toFixed(1)}h`
+                : "0h"}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Per night average
@@ -249,7 +254,7 @@ export function PatientDashboard() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {patientSessions.map((session: any) => (
+              {patientSessions.map((session) => (
                 <SessionCard key={session.id} session={session} />
               ))}
             </div>

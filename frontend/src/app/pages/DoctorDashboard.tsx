@@ -4,6 +4,7 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { useAuth } from "../context/AuthContext";
 import { RiskBadge } from "../components/RiskBadge";
 import { useState, useEffect } from "react";
+import { readStoredSessions } from "../data/sessionUtils";
 
 interface Patient {
   email: string;
@@ -32,9 +33,11 @@ export function DoctorDashboard() {
     const patientUsers = allUsers.filter((u: any) => u.role === "patient");
 
     const patientData: Patient[] = patientUsers.map((p: any) => {
-      const sessions = JSON.parse(localStorage.getItem(`sessions_${p.email}`) || "[]");
+      const sessions = readStoredSessions(`sessions_${p.email}`);
       const avgQuality = sessions.length > 0
-        ? Math.round(sessions.reduce((acc: number, s: any) => acc + (s.sleepQuality || 75), 0) / sessions.length)
+        ? Math.round(
+            sessions.reduce((acc: number, s) => acc + s.features.sleep_efficiency, 0) / sessions.length
+          )
         : 0;
 
       // Determine risk level based on sleep quality and sessions

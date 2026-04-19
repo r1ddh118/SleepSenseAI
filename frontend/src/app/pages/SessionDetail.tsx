@@ -6,11 +6,13 @@ import { SleepHypnogram } from "../components/SleepHypnogram";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useAuth } from "../context/AuthContext";
 import { mockSessions, generateSensorData, generateHypnogramData } from "../data/mockData";
+import { readStoredSessions } from "../data/sessionUtils";
 
 export function SessionDetail() {
   const { id } = useParams<{ id: string }>();
   const { user, logout } = useAuth();
-  const session = mockSessions.find((s) => s.id === id);
+  const storedSessions = user?.email ? readStoredSessions(`sessions_${user.email}`) : [];
+  const session = storedSessions.find((s) => s.id === id) ?? mockSessions.find((s) => s.id === id);
 
   if (!session) {
     return (
