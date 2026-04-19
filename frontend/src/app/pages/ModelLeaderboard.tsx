@@ -1,9 +1,12 @@
 import { Link } from "react-router";
-import { ArrowLeft, Trophy, Clock, TrendingUp, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Trophy, Clock, TrendingUp, CheckCircle2, LogOut, User } from "lucide-react";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { useAuth } from "../context/AuthContext";
 import { modelLeaderboard } from "../data/mockData";
 
 export function ModelLeaderboard() {
+  const { user, logout } = useAuth();
+
   // Sort by AUC-ROC
   const sortedModels = [...modelLeaderboard].sort((a, b) => b.aucRoc - a.aucRoc);
 
@@ -35,6 +38,17 @@ export function ModelLeaderboard() {
               <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" />
                 Retrain Models
+              </button>
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                <User className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                <span className="text-sm text-gray-700 dark:text-gray-300">{user?.name}</span>
+              </div>
+              <button
+                onClick={logout}
+                className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-5 h-5" />
               </button>
               <ThemeToggle />
             </div>

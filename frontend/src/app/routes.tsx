@@ -1,28 +1,55 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router";
 import { Dashboard } from "./pages/Dashboard";
 import { SessionDetail } from "./pages/SessionDetail";
 import { ModelLeaderboard } from "./pages/ModelLeaderboard";
 import { NewSession } from "./pages/NewSession";
+import { Login } from "./pages/Login";
+import { Signup } from "./pages/Signup";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export const router = createBrowserRouter([
   {
     path: "/",
-    Component: Dashboard,
+    element: <Navigate to="/login" replace />,
+  },
+  {
+    path: "/login",
+    Component: Login,
+  },
+  {
+    path: "/signup",
+    Component: Signup,
   },
   {
     path: "/dashboard",
-    Component: Dashboard,
+    element: (
+      <ProtectedRoute>
+        <Dashboard />
+      </ProtectedRoute>
+    ),
   },
   {
     path: "/session/new",
-    Component: NewSession,
+    element: (
+      <ProtectedRoute>
+        <NewSession />
+      </ProtectedRoute>
+    ),
   },
   {
     path: "/session/:id",
-    Component: SessionDetail,
+    element: (
+      <ProtectedRoute>
+        <SessionDetail />
+      </ProtectedRoute>
+    ),
   },
   {
     path: "/admin/models",
-    Component: ModelLeaderboard,
+    element: (
+      <ProtectedRoute>
+        <ModelLeaderboard />
+      </ProtectedRoute>
+    ),
   },
 ]);

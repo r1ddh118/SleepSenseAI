@@ -1,13 +1,15 @@
 import { Link, useParams } from "react-router";
-import { ArrowLeft, Download, Calendar, Clock, Activity, Thermometer, Droplets } from "lucide-react";
+import { ArrowLeft, Download, Calendar, Clock, Activity, Thermometer, Droplets, LogOut, User } from "lucide-react";
 import { RiskBadge } from "../components/RiskBadge";
 import { SensorChart } from "../components/SensorChart";
 import { SleepHypnogram } from "../components/SleepHypnogram";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { useAuth } from "../context/AuthContext";
 import { mockSessions, generateSensorData, generateHypnogramData } from "../data/mockData";
 
 export function SessionDetail() {
   const { id } = useParams<{ id: string }>();
+  const { user, logout } = useAuth();
   const session = mockSessions.find((s) => s.id === id);
 
   if (!session) {
@@ -65,6 +67,17 @@ export function SessionDetail() {
               <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
                 <Download className="w-4 h-4" />
                 Download Report
+              </button>
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                <User className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                <span className="text-sm text-gray-700 dark:text-gray-300">{user?.name}</span>
+              </div>
+              <button
+                onClick={logout}
+                className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-5 h-5" />
               </button>
               <ThemeToggle />
             </div>

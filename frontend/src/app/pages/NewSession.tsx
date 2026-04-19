@@ -1,9 +1,12 @@
-import { Link } from "react-router";
-import { ArrowLeft, Wifi, Activity, CheckCircle2, Loader2 } from "lucide-react";
+import { Link, useNavigate } from "react-router";
+import { ArrowLeft, Wifi, Activity, CheckCircle2, Loader2, LogOut, User } from "lucide-react";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { useAuth } from "../context/AuthContext";
 import { useState } from "react";
 
 export function NewSession() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [step, setStep] = useState<"device" | "recording" | "processing">("device");
   const [sessionId, setSessionId] = useState("");
   const [recordingProgress, setRecordingProgress] = useState(0);
@@ -19,11 +22,41 @@ export function NewSession() {
         if (prev >= 100) {
           clearInterval(interval);
           setStep("processing");
+          
+          // Save session for patient users
+          if (user?.role === "patient") {
+            savePatientSession(id);
+          }
+          
+          // Redirect after processing
+          setTimeout(() => {
+            navigate("/dashboard");
+          }, 2000);
+          
           return 100;
         }
         return prev + 1;
       });
     }, 100);
+  };
+
+  const savePatientSession = (id: string) => {
+    const session = {
+      id,
+      patientName: user?.name || "Unknown",
+      date: new Date().toISOString().split("T")[0],
+      duration: "7.2h",
+      sleepQuality: Math.floor(Math.random() * 30) + 65, // Random quality between 65-95
+      risk: Math.random() > 0.7 ? "moderate" : Math.random() > 0.4 ? "low" : "high",
+      riskScore: Math.random() * 100,
+      createdAt: new Date().toISOString(),
+    };
+
+    const existingSessions = JSON.parse(
+      localStorage.getItem(`sessions_${user?.email}`) || "[]"
+    );
+    existingSessions.push(session);
+    localStorage.setItem(`sessions_${user?.email}`, JSON.stringify(existingSessions));
   };
 
   return (
@@ -44,7 +77,20 @@ export function NewSession() {
                 <p className="text-sm text-gray-600 dark:text-gray-400">Connect your Empatica E4 device and start monitoring</p>
               </div>
             </div>
-            <ThemeToggle />
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                <User className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                <span className="text-sm text-gray-700 dark:text-gray-300">{user?.name}</span>
+              </div>
+              <button
+                onClick={logout}
+                className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </header>
