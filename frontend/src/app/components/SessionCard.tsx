@@ -8,6 +8,10 @@ interface SessionCardProps {
 }
 
 export function SessionCard({ session }: SessionCardProps) {
+  const sleepEfficiency = session.features?.sleep_efficiency ?? 0;
+  const averageHeartRate = session.features?.HR_mean ?? 0;
+  const sleepStages = session.sleepStages ?? { wake: 0, n1: 0, n2: 0, n3: 0, rem: 0 };
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString("en-US", {
@@ -42,23 +46,23 @@ export function SessionCard({ session }: SessionCardProps) {
       <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
         <div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Sleep Efficiency</p>
-          <p className="font-semibold text-gray-900 dark:text-gray-100">{session.features.sleep_efficiency.toFixed(1)}%</p>
+          <p className="font-semibold text-gray-900 dark:text-gray-100">{sleepEfficiency.toFixed(1)}%</p>
         </div>
         <div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Avg Heart Rate</p>
           <p className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1">
             <Activity className="w-4 h-4 text-red-500" />
-            {session.features.HR_mean.toFixed(0)} bpm
+            {averageHeartRate.toFixed(0)} bpm
           </p>
         </div>
         <div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Deep Sleep</p>
-          <p className="font-semibold text-gray-900 dark:text-gray-100">{session.sleepStages.n3}%</p>
+          <p className="font-semibold text-gray-900 dark:text-gray-100">{sleepStages.n3}%</p>
         </div>
       </div>
 
       <div className="flex gap-2 mt-4">
-        {Object.entries(session.sleepStages).map(([stage, pct]) => {
+        {Object.entries(sleepStages).map(([stage, pct]) => {
           const colors: Record<string, string> = {
             wake: "bg-red-500",
             n1: "bg-amber-500",
