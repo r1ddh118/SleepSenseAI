@@ -2,43 +2,99 @@ import { Link, useNavigate } from "react-router";
 import { ArrowLeft, Wifi, Activity, CheckCircle2, Loader2, LogOut, User } from "lucide-react";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useAuth } from "../context/AuthContext";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { readStoredSessions } from "../data/sessionUtils";
+
+const DEMO_MS_PER_HOUR = 1250;
 
 export function NewSession() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState<"device" | "recording" | "processing">("device");
   const [sessionId, setSessionId] = useState("");
+  const [sessionIdInput, setSessionIdInput] = useState("");
+  const [durationChoice, setDurationChoice] = useState("8");
+  const [customDurationHours, setCustomDurationHours] = useState("8");
   const [recordingProgress, setRecordingProgress] = useState(0);
+  const [isSensorConnected, setIsSensorConnected] = useState(true);
+  const [isReceivingData, setIsReceivingData] = useState(false);
+  const [lastDataAt, setLastDataAt] = useState<Date | null>(null);
+  const [recordingStartedAt, setRecordingStartedAt] = useState<Date | null>(null);
+  const [validationError, setValidationError] = useState("");
+  const recordingIntervalRef = useRef<number | null>(null);
+  const redirectTimeoutRef = useRef<number | null>(null);
+
+  const selectedDurationHours = useMemo(() => {
+    if (durationChoice === "custom") {
+      const parsed = Number(customDurationHours);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return Number(durationChoice);
+  }, [customDurationHours, durationChoice]);
+
+  const clearRecordingInterval = () => {
+    if (recordingIntervalRef.current !== null) {
+      window.clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+  };
+
+  const moveToProcessing = (id: string) => {
+    clearRecordingInterval();
+    setIsReceivingData(false);
+    setStep("processing");
+
+    if (user?.role === "patient") {
+      savePatientSession(id);
+    }
+
+    redirectTimeoutRef.current = window.setTimeout(() => {
+      navigate("/dashboard");
+    }, 2000);
+  };
 
   const startRecording = () => {
-    const id = `S${String(Math.floor(Math.random() * 1000)).padStart(3, "0")}`;
+    if (!isSensorConnected) {
+      setValidationError("Connect sensors before starting a recording.");
+      return;
+    }
+
+    if (!selectedDurationHours || selectedDurationHours <= 0 || selectedDurationHours > 24) {
+      setValidationError("Duration must be between 1 and 24 hours.");
+      return;
+    }
+
+    setValidationError("");
+    const id = (sessionIdInput.trim() || `S${String(Math.floor(Math.random() * 1000)).padStart(3, "0")}`).toUpperCase();
     setSessionId(id);
     setStep("recording");
+    setRecordingProgress(0);
+    setIsReceivingData(true);
+    setLastDataAt(new Date());
+    setRecordingStartedAt(new Date());
 
-    // Simulate recording progress
-    const interval = setInterval(() => {
-      setRecordingProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setStep("processing");
-          
-          // Save session for patient users
-          if (user?.role === "patient") {
-            savePatientSession(id);
-          }
-          
-          // Redirect after processing
-          setTimeout(() => {
-            navigate("/dashboard");
-          }, 2000);
-          
-          return 100;
-        }
-        return prev + 1;
-      });
-    }, 100);
+    const totalDemoDurationMs = Math.max(selectedDurationHours * DEMO_MS_PER_HOUR, DEMO_MS_PER_HOUR);
+    const startedAt = Date.now();
+
+    clearRecordingInterval();
+    recordingIntervalRef.current = window.setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      const nextProgress = Math.min(100, Math.round((elapsed / totalDemoDurationMs) * 100));
+      setRecordingProgress(nextProgress);
+      setLastDataAt(new Date());
+      setIsReceivingData(isSensorConnected);
+
+      if (nextProgress >= 100) {
+        moveToProcessing(id);
+      }
+    }, 150);
+  };
+
+  const stopRecording = () => {
+    if (step !== "recording") {
+      return;
+    }
+    moveToProcessing(sessionId);
   };
 
   const savePatientSession = (id: string) => {
@@ -81,6 +137,15 @@ export function NewSession() {
     existingSessions.push(session);
     localStorage.setItem(`sessions_${user?.email}`, JSON.stringify(existingSessions));
   };
+
+  useEffect(() => {
+    return () => {
+      clearRecordingInterval();
+      if (redirectTimeoutRef.current !== null) {
+        window.clearTimeout(redirectTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -130,19 +195,25 @@ export function NewSession() {
             </div>
 
             <div className="space-y-4 mb-8">
-              <div className="flex items-start gap-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+              <div className={`flex items-start gap-4 p-4 border rounded-lg ${isSensorConnected ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"}`}>
+                <CheckCircle2 className={`w-5 h-5 flex-shrink-0 mt-0.5 ${isSensorConnected ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} />
                 <div>
-                  <p className="font-medium text-green-900 dark:text-green-300">Raspberry Pi 5 Connected</p>
-                  <p className="text-sm text-green-700 dark:text-green-400">Device ID: E4-RPi5-001</p>
+                  <p className={`font-medium ${isSensorConnected ? "text-green-900 dark:text-green-300" : "text-red-900 dark:text-red-300"}`}>
+                    Raspberry Pi 5 {isSensorConnected ? "Connected" : "Disconnected"}
+                  </p>
+                  <p className={`text-sm ${isSensorConnected ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>Device ID: E4-RPi5-001</p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5 animate-pulse" />
+              <div className={`flex items-start gap-4 p-4 border rounded-lg ${isSensorConnected ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800" : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"}`}>
+                <Activity className={`w-5 h-5 flex-shrink-0 mt-0.5 ${isSensorConnected ? "text-blue-600 dark:text-blue-400 animate-pulse" : "text-gray-500 dark:text-gray-400"}`} />
                 <div>
-                  <p className="font-medium text-blue-900 dark:text-blue-300">Empatica E4 Detected</p>
-                  <p className="text-sm text-blue-700 dark:text-blue-400">Signal strength: Excellent</p>
+                  <p className={`font-medium ${isSensorConnected ? "text-blue-900 dark:text-blue-300" : "text-gray-800 dark:text-gray-200"}`}>
+                    Empatica E4 {isSensorConnected ? "Detected" : "Not detected"}
+                  </p>
+                  <p className={`text-sm ${isSensorConnected ? "text-blue-700 dark:text-blue-400" : "text-gray-600 dark:text-gray-400"}`}>
+                    {isSensorConnected ? "Signal strength: Excellent" : "No signal from paired sensor"}
+                  </p>
                 </div>
               </div>
             </div>
@@ -152,20 +223,51 @@ export function NewSession() {
               <input
                 type="text"
                 placeholder="Auto-generated (optional override)"
+                value={sessionIdInput}
+                onChange={(e) => setSessionIdInput(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
               />
             </div>
 
             <div className="mb-8">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Duration (hours)</label>
-              <select className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
-                <option>8 hours (recommended)</option>
-                <option>6 hours</option>
-                <option>7 hours</option>
-                <option>9 hours</option>
-                <option>Custom</option>
+              <select
+                value={durationChoice}
+                onChange={(e) => setDurationChoice(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              >
+                <option value="8">8 hours (recommended)</option>
+                <option value="6">6 hours</option>
+                <option value="7">7 hours</option>
+                <option value="9">9 hours</option>
+                <option value="custom">Custom</option>
               </select>
+              {durationChoice === "custom" && (
+                <input
+                  type="number"
+                  min={1}
+                  max={24}
+                  step={1}
+                  value={customDurationHours}
+                  onChange={(e) => setCustomDurationHours(e.target.value)}
+                  placeholder="Enter custom hours (1-24)"
+                  className="mt-3 w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                />
+              )}
             </div>
+
+            <div className="mb-8 flex items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              <p className="text-sm text-gray-700 dark:text-gray-300">Sensor connection</p>
+              <button
+                type="button"
+                onClick={() => setIsSensorConnected((prev) => !prev)}
+                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${isSensorConnected ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"}`}
+              >
+                {isSensorConnected ? "Connected" : "Disconnected"}
+              </button>
+            </div>
+
+            {validationError && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{validationError}</p>}
 
             <button
               onClick={startRecording}
@@ -189,13 +291,29 @@ export function NewSession() {
             <div className="mb-8">
               <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
                 <span>Progress</span>
-                <span>{recordingProgress}% (Demo: 10s = 8hr)</span>
+                <span>{recordingProgress}% (Demo: {selectedDurationHours || 0}h ≈ {Math.max(Math.round((selectedDurationHours || 0) * (DEMO_MS_PER_HOUR / 1000)), 1)}s)</span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
                 <div
                   className="bg-blue-600 h-3 rounded-full transition-all duration-300"
                   style={{ width: `${recordingProgress}%` }}
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+              <div className={`rounded-lg border p-4 ${isSensorConnected ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20" : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"}`}>
+                <p className={`text-sm ${isSensorConnected ? "text-green-800 dark:text-green-300" : "text-red-800 dark:text-red-300"}`}>Sensor connection</p>
+                <p className={`font-semibold ${isSensorConnected ? "text-green-900 dark:text-green-200" : "text-red-900 dark:text-red-200"}`}>
+                  {isSensorConnected ? "Connected" : "Disconnected"}
+                </p>
+              </div>
+              <div className={`rounded-lg border p-4 ${isReceivingData ? "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20" : "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800"}`}>
+                <p className={`text-sm ${isReceivingData ? "text-blue-800 dark:text-blue-300" : "text-gray-700 dark:text-gray-300"}`}>Data stream</p>
+                <p className={`font-semibold ${isReceivingData ? "text-blue-900 dark:text-blue-200" : "text-gray-900 dark:text-gray-100"}`}>
+                  {isReceivingData ? "Receiving sensor packets" : "No incoming sensor data"}
+                </p>
+                {lastDataAt && <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Last packet: {lastDataAt.toLocaleTimeString()}</p>}
               </div>
             </div>
 
@@ -230,7 +348,16 @@ export function NewSession() {
               </div>
             </div>
 
-            <button className="w-full px-6 py-3 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors font-medium">
+            {recordingStartedAt && (
+              <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+                Started at {recordingStartedAt.toLocaleTimeString()} • Target duration: {selectedDurationHours} hour(s)
+              </p>
+            )}
+
+            <button
+              onClick={stopRecording}
+              className="w-full px-6 py-3 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors font-medium"
+            >
               Stop Recording
             </button>
           </div>
