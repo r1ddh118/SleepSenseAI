@@ -26,26 +26,68 @@ Entrypoint: `src/main.py` (`preprocess`, `eda`, `train`, `predict`). See **CLI W
 ## Phase 2 — Backend (FastAPI)
 
 Stack: FastAPI, SQLAlchemy (SQLite or Postgres), Celery + Redis, WebSocket + MQTT relay, JWT auth.
+## Unified app launcher (single terminal)
+
+If your local stack feels broken because API, worker, broker, and frontend need separate terminals, use the new root `app.py` launcher. It starts the services together and shuts them down together.
+
+```bash
+# from repo root
+python app.py
+```
+
+What it starts by default:
+- Redis (`redis-server`)
+- Mosquitto MQTT broker (`mosquitto`)
+- Celery worker (`celery -A tasks worker --loglevel=info`)
+- FastAPI (`uvicorn main:app --reload --port 8000`)
+- Frontend Vite dev server (`npm run dev -- --host`)
+
+Useful flags:
+
+```bash
+python app.py --no-frontend      # run backend only
+python app.py --no-mqtt          # disable MQTT broker
+python app.py --no-redis         # disable redis (if you provide an external redis)
+python app.py --api-port 8080    # change API port
+python app.py --mqtt-port 1884   # change MQTT port
+```
+
+Press `Ctrl+C` once to stop all services cleanly.
+
 
 The API **imports the existing `src/` pipeline** inside Celery workers via `src/main.py` (`SleepSenseApp`) so preprocessing/training logic is not duplicated.
 
 ### Run without Docker
+
+Recommended (single terminal):
+
+```bash
+python app.py
+```
+
+Manual multi-terminal option (legacy):
 
 ```bash
 # Terminal 1
 redis-server
 
 # Terminal 2
+mosquitto -p 1883
+
+# Terminal 3
 cd api
 pip install -r requirements_api.txt
 celery -A tasks worker --loglevel=info
 
-# Terminal 3
+# Terminal 4
 cd api
 uvicorn main:app --reload --port 8000
+
+# Terminal 5
+cd frontend && npm install && npm run dev -- --host
 ```
 
-Open [http://localhost:8000/docs](http://localhost:8000/docs).
+Open [http://localhost:8000/docs](http://localhost:8000/docs) for backend and [http://localhost:5173](http://localhost:5173) for frontend.
 
 Copy `.env.example` to `.env` at the repo root and adjust variables as needed.
 
@@ -122,6 +164,21 @@ Prediction task results and stored rows can include `shap_top_features` (tree mo
   ```
 
   Nginx proxies `/api/`, `/docs`, `/openapi.json`, and `/ws/` to the API container; static files from `frontend/dist`.
+
+
+## Hardware connectivity quick check (MQTT + API relay)
+
+1. Start the stack with `python app.py` (or ensure API + Mosquitto are running).
+2. Open a WebSocket client to `ws://localhost:8000/ws/live/S002`.
+3. Publish a test message:
+
+```bash
+mosquitto_pub -h localhost -p 1883 -t sleepsense/S002/eda -m '{"eda": 2.1, "ts": 1710000000}'
+```
+
+If the WebSocket receives that payload, frontend live charts can consume hardware stream data through the backend relay.
+
+For hardware scripts, `hardware/mqtt_publisher.py` now includes a reusable `MQTTPublisher` class plus `publish_sample(topic, payload)` helper.
 
 ## Phase 6 — Advanced
 
