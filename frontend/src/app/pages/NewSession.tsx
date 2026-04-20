@@ -343,23 +343,29 @@ export function NewSession() {
                 </p>
               </div>
               <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">EDA</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                  EDA <span className="text-[10px] bg-blue-100 text-blue-800 px-1 py-0.5 rounded ml-1 dark:bg-blue-900 dark:text-blue-200">AI Estimated</span>
+                </p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                  {liveData.EDA > 0 ? liveData.EDA.toFixed(1) : "--"}
+                  {liveData.EDA > 0 ? liveData.EDA.toFixed(2) : "--"}
                   <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> µS</span>
                 </p>
               </div>
               <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Temp</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                  Temp <span className="text-[10px] bg-blue-100 text-blue-800 px-1 py-0.5 rounded ml-1 dark:bg-blue-900 dark:text-blue-200">AI Estimated</span>
+                </p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                  {liveData.TEMP > 0 ? liveData.TEMP.toFixed(1) : "--"}
+                  {liveData.TEMP > 0 ? liveData.TEMP.toFixed(2) : "--"}
                   <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> °C</span>
                 </p>
               </div>
               <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">BVP</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                  BVP <span className="text-[10px] bg-blue-100 text-blue-800 px-1 py-0.5 rounded ml-1 dark:bg-blue-900 dark:text-blue-200">AI Estimated</span>
+                </p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                  {liveData.BVP > 0 ? Math.floor(liveData.BVP) : "--"}
+                  {liveData.BVP > 0 ? liveData.BVP.toFixed(1) : "--"}
                   <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> a.u.</span>
                 </p>
               </div>

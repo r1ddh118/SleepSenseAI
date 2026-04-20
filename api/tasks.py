@@ -251,3 +251,27 @@ def run_training_and_prediction(self, sid: str, dataset_path: str | None = None)
             db.close()
 
     return result
+
+
+@app.task(bind=True, name="tasks.run_training")
+def run_training(self, dataset_path: str | None = None) -> dict:
+    SleepSenseApp = _load_pipeline_main()
+
+    ds_root = Path(dataset_path or settings.datasets_path)
+    participant = ds_root / "participant_info.csv"
+    if not participant.exists():
+        participant = settings.participant_csv
+
+    logger.info("Training pipeline: dataset_dir=%s", ds_root)
+    app_pipeline = SleepSenseApp(ds_root, participant, settings.artifacts_path)
+
+    app_pipeline.preprocessor.preprocess_training_data()
+    processed_df = app_pipeline.preprocessor.load_preprocessed_training_data()
+    train_out = app_pipeline.trainer.train_and_select(processed_df, settings.artifacts_path)
+
+    lb_path = Path(train_out["leaderboard_csv"])
+    leaderboard = pd.read_csv(lb_path).to_dict(orient="records")
+    best_name = train_out["best_model"]
+
+    logger.info("Training complete. Best model: %s", best_name)
+    return {"best_model": best_name, "leaderboard": leaderboard}

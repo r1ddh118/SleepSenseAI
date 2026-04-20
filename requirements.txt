@@ -1,5 +1,17 @@
+fastapi
+uvicorn
+celery
+redis
 pandas
 numpy
 scikit-learn
+xgboost
+shap
 tensorflow
 matplotlib
+pydantic
+pydantic-settings
+SQLAlchemy
+paho-mqtt
+passlib
+python-jose

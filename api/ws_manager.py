@@ -3,12 +3,14 @@
 import asyncio
 import json
 import logging
+import pickle
 import ssl
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
 import paho.mqtt.client as mqtt
+import pandas as pd
 from fastapi import WebSocket
 
 from config import settings
@@ -23,6 +25,17 @@ class WebSocketManager:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._active_recording_sid: str | None = None
         self._active_csv_path: Path | None = None
+        self._imputer = None
+        
+        # Load the imputer model if it exists
+        imputer_path = settings.artifacts_path / "sensor_imputer.pkl"
+        try:
+            if imputer_path.exists():
+                with open(imputer_path, "rb") as f:
+                    self._imputer = pickle.load(f)
+                logger.info("Loaded sensor imputer ML model")
+        except Exception as e:
+            logger.warning("Could not load imputer model: %s", e)
 
     def set_recording_session(self, sid: str | None):
         self._active_recording_sid = sid
@@ -75,16 +88,22 @@ class WebSocketManager:
                 data = json.loads(payload_str)
                 bpm = float(data.get("bpm", 0.0))
                 
-                # Mock missing sensors via heuristics so the pipeline doesn't choke completely
-                # EDA: 1.0 - 5.0 µS
-                # TEMP: 32.0 - 36.0 °C
-                # BVP: random fluctuation around standard values
+                # Default heuristics
                 bvp_val = 20.0 + (bpm % 10)
                 acc_x, acc_y, acc_z = 0.5, 0.5, 0.5
                 temp_val = 33.0 + (bpm % 2)
                 eda_val = 2.0 + (bpm % 3)
                 ibi_val = 60000.0 / bpm if bpm > 0 else 0.0
                 
+                # If imputer is loaded, predict EDA, TEMP, BVP from HR using the ML model
+                if self._imputer is not None and bpm > 0:
+                    try:
+                        # Reshape for single sample prediction
+                        preds = self._imputer.predict(pd.DataFrame({"HR": [bpm]}))
+                        eda_val, temp_val, bvp_val = preds[0]
+                    except Exception as e:
+                        logger.error("Imputation failed: %s", e)
+
                 # If we have an active recording session, save to CSV
                 if self._active_recording_sid and self._active_csv_path:
                     with open(self._active_csv_path, "a") as f:
