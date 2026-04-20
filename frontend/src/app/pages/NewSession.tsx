@@ -5,8 +5,6 @@ import { useAuth } from "../context/AuthContext";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { readStoredSessions } from "../data/sessionUtils";
 
-const DEMO_MS_PER_HOUR = 1250;
-
 export function NewSession() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -19,10 +17,12 @@ export function NewSession() {
   const [isSensorConnected, setIsSensorConnected] = useState(true);
   const [isReceivingData, setIsReceivingData] = useState(false);
   const [lastDataAt, setLastDataAt] = useState<Date | null>(null);
+  const [liveData, setLiveData] = useState({ HR: 0, EDA: 0, TEMP: 0, BVP: 0 });
   const [recordingStartedAt, setRecordingStartedAt] = useState<Date | null>(null);
   const [validationError, setValidationError] = useState("");
   const recordingIntervalRef = useRef<number | null>(null);
   const redirectTimeoutRef = useRef<number | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   const selectedDurationHours = useMemo(() => {
     if (durationChoice === "custom") {
@@ -39,21 +39,33 @@ export function NewSession() {
     }
   };
 
-  const moveToProcessing = (id: string) => {
+  const moveToProcessing = async (id: string) => {
     clearRecordingInterval();
     setIsReceivingData(false);
     setStep("processing");
+    
+    if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+    }
 
-    if (user?.role === "patient") {
-      savePatientSession(id);
+    try {
+        await fetch(`/api/v1/sessions/${id}/complete`, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${localStorage.getItem("token")}`
+            }
+        });
+    } catch (e) {
+        console.error("Failed to complete session:", e);
     }
 
     redirectTimeoutRef.current = window.setTimeout(() => {
       navigate("/dashboard");
-    }, 2000);
+    }, 3000); // give the celery task a few moments before redirect
   };
 
-  const startRecording = () => {
+  const startRecording = async () => {
     if (!isSensorConnected) {
       setValidationError("Connect sensors before starting a recording.");
       return;
@@ -67,27 +79,68 @@ export function NewSession() {
     setValidationError("");
     const id = (sessionIdInput.trim() || `S${String(Math.floor(Math.random() * 1000)).padStart(3, "0")}`).toUpperCase();
     setSessionId(id);
+    
+    // Create Session
+    try {
+        await fetch(`/api/v1/sessions/`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${localStorage.getItem("token")}`
+            },
+            body: JSON.stringify({ sid: id, duration_seconds: selectedDurationHours * 3600 })
+        });
+        await fetch(`/api/v1/sessions/${id}`, {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${localStorage.getItem("token")}`
+            },
+            body: JSON.stringify({ status: "recording" })
+        });
+    } catch (e) {
+        setValidationError("Failed to initialize session on backend.");
+        return;
+    }
+
     setStep("recording");
     setRecordingProgress(0);
     setIsReceivingData(true);
     setLastDataAt(new Date());
     setRecordingStartedAt(new Date());
+    
+    // Connect to WebSocket using current window host
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/api/v1/ws/${id}`;
+    const ws = new WebSocket(wsUrl);
+    ws.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            setLiveData({
+                HR: data.HR || 0,
+                EDA: data.EDA || 0,
+                TEMP: data.TEMP || 0,
+                BVP: data.BVP || 0
+            });
+            setLastDataAt(new Date());
+            setIsReceivingData(true);
+        } catch (e) {}
+    };
+    wsRef.current = ws;
 
-    const totalDemoDurationMs = Math.max(selectedDurationHours * DEMO_MS_PER_HOUR, DEMO_MS_PER_HOUR);
+    const totalDurationMs = selectedDurationHours * 3600000;
     const startedAt = Date.now();
 
     clearRecordingInterval();
     recordingIntervalRef.current = window.setInterval(() => {
       const elapsed = Date.now() - startedAt;
-      const nextProgress = Math.min(100, Math.round((elapsed / totalDemoDurationMs) * 100));
+      const nextProgress = Math.min(100, (elapsed / totalDurationMs) * 100);
       setRecordingProgress(nextProgress);
-      setLastDataAt(new Date());
-      setIsReceivingData(isSensorConnected);
 
       if (nextProgress >= 100) {
         moveToProcessing(id);
       }
-    }, 150);
+    }, 1000); // update progress every second
   };
 
   const stopRecording = () => {
@@ -97,52 +150,16 @@ export function NewSession() {
     moveToProcessing(sessionId);
   };
 
-  const savePatientSession = (id: string) => {
-    const durationMinutes = 432;
-    const sleepEfficiency = Math.floor(Math.random() * 30) + 65;
-    const riskProbability = Math.random();
-    const session = {
-      id,
-      sid: id,
-      patientName: user?.name || "Unknown",
-      date: new Date().toISOString().split("T")[0],
-      duration: durationMinutes,
-      sleepQuality: sleepEfficiency,
-      riskProbability,
-      risk:
-        riskProbability >= 0.7 ? "high" : riskProbability >= 0.4 ? "moderate" : "low",
-      riskScore: riskProbability * 100,
-      riskLevel:
-        riskProbability >= 0.7 ? "high" : riskProbability >= 0.4 ? "moderate" : "low",
-      status: "completed",
-      sleepStages: {
-        wake: Math.floor(Math.random() * 15) + 5,
-        n1: Math.floor(Math.random() * 10) + 8,
-        n2: Math.floor(Math.random() * 20) + 35,
-        n3: Math.floor(Math.random() * 15) + 8,
-        rem: Math.floor(Math.random() * 12) + 10,
-      },
-      features: {
-        HR_mean: 60 + Math.random() * 20,
-        HR_std: 6 + Math.random() * 8,
-        EDA_mean: 2 + Math.random() * 3,
-        TEMP_mean: 33 + Math.random() * 1.5,
-        event_rate: Math.random() * 0.12,
-        sleep_efficiency: sleepEfficiency,
-      },
-      createdAt: new Date().toISOString(),
-    };
 
-    const existingSessions = readStoredSessions(`sessions_${user?.email}`);
-    existingSessions.push(session);
-    localStorage.setItem(`sessions_${user?.email}`, JSON.stringify(existingSessions));
-  };
 
   useEffect(() => {
     return () => {
       clearRecordingInterval();
       if (redirectTimeoutRef.current !== null) {
         window.clearTimeout(redirectTimeoutRef.current);
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
       }
     };
   }, []);
@@ -291,7 +308,7 @@ export function NewSession() {
             <div className="mb-8">
               <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
                 <span>Progress</span>
-                <span>{recordingProgress}% (Demo: {selectedDurationHours || 0}h ≈ {Math.max(Math.round((selectedDurationHours || 0) * (DEMO_MS_PER_HOUR / 1000)), 1)}s)</span>
+                <span>{recordingProgress.toFixed(1)}% ({selectedDurationHours || 0}h Total)</span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
                 <div
@@ -321,28 +338,28 @@ export function NewSession() {
               <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Heart Rate</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                  {Math.floor(60 + Math.random() * 20)}
+                  {liveData.HR > 0 ? liveData.HR.toFixed(1) : "--"}
                   <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> bpm</span>
                 </p>
               </div>
               <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">EDA</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                  {(2 + Math.random() * 2).toFixed(1)}
+                  {liveData.EDA > 0 ? liveData.EDA.toFixed(1) : "--"}
                   <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> µS</span>
                 </p>
               </div>
               <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Temp</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                  {(33 + Math.random()).toFixed(1)}
+                  {liveData.TEMP > 0 ? liveData.TEMP.toFixed(1) : "--"}
                   <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> °C</span>
                 </p>
               </div>
               <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">BVP</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                  {Math.floor(40 + Math.random() * 40)}
+                  {liveData.BVP > 0 ? Math.floor(liveData.BVP) : "--"}
                   <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> a.u.</span>
                 </p>
               </div>

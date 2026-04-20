@@ -10,6 +10,7 @@ import argparse
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -75,7 +76,44 @@ class Launcher:
             ManagedProcess(name=name, command=command, cwd=cwd or ROOT, env=self._env())
         )
 
+    def _port_is_available(self, host: str, port: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind((host, port))
+            except OSError:
+                return False
+        return True
+
+    def _ensure_port_available(self, label: str, host: str, port: int, flag: str) -> None:
+        if not self._port_is_available(host, port):
+            raise RuntimeError(
+                f"{label} port {port} is already in use on {host}. "
+                f"Stop the existing service or rerun with {flag}."
+            )
+
     def build(self) -> None:
+        if self.args.with_redis:
+            self._ensure_port_available("Redis", "127.0.0.1", 6379, "--no-redis")
+
+        if self.args.with_mqtt:
+            self._ensure_port_available(
+                "Mosquitto",
+                "127.0.0.1",
+                self.args.mqtt_port,
+                f"--mqtt-port {self.args.mqtt_port + 1}",
+            )
+
+        api_bind_host = self.args.api_host
+        if api_bind_host == "0.0.0.0":
+            api_bind_host = "127.0.0.1"
+        self._ensure_port_available(
+            "FastAPI",
+            api_bind_host,
+            self.args.api_port,
+            f"--api-port {self.args.api_port + 1}",
+        )
+
         if self.args.with_redis:
             self._ensure_binary("redis-server", "Install Redis or run with --no-redis.")
             self._add("redis", ["redis-server"])

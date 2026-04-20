@@ -93,10 +93,20 @@ def update_session(
 
     if body.status is not None:
         session.status = body.status
+        from ws_manager import ws_manager
+        
         if body.status == "recording":
             session.started_at = datetime.utcnow()
-        elif body.status in ("complete", "failed"):
+            ws_manager.set_recording_session(sid)
+            
+        elif body.status in ("complete", "completed", "failed"):
             session.ended_at = datetime.utcnow()
+            ws_manager.set_recording_session(None)
+            if body.status in ("complete", "completed"):
+                # Trigger cumulative training and prediction
+                from tasks import run_training_and_prediction
+                run_training_and_prediction.delay(sid=sid)
+
     if body.sensor_csv_path is not None:
         session.sensor_csv_path = body.sensor_csv_path
     if body.notes is not None:
@@ -114,6 +124,13 @@ def mark_complete(sid: str, db: DBSession = Depends(get_db)):
         session.status = "complete"
         session.ended_at = datetime.utcnow()
         db.commit()
+        
+        from ws_manager import ws_manager
+        ws_manager.set_recording_session(None)
+        
+        from tasks import run_training_and_prediction
+        run_training_and_prediction.delay(sid=sid)
+        
     return {"status": "ok"}
 
 

@@ -4,6 +4,7 @@ Loads the pipeline from src/main.py explicitly to avoid clashing with api/main.p
 """
 
 import importlib.util
+import json
 import logging
 import pickle
 import sys
@@ -149,8 +150,10 @@ def run_prediction(
     return result
 
 
-@app.task(bind=True, name="tasks.run_training")
-def run_training(self, dataset_path: str | None = None) -> dict:
+@app.task(bind=True, name="tasks.run_training_and_prediction")
+def run_training_and_prediction(self, sid: str, dataset_path: str | None = None) -> dict:
+    """Train on the entire dataset (including the new session), then predict for the new session."""
+    # 1. Train on all visible sessions
     SleepSenseApp = _load_pipeline_main()
 
     ds_root = Path(dataset_path or settings.datasets_path)
@@ -158,16 +161,93 @@ def run_training(self, dataset_path: str | None = None) -> dict:
     if not participant.exists():
         participant = settings.participant_csv
 
-    logger.info("Training pipeline: dataset_dir=%s", ds_root)
-    app = SleepSenseApp(ds_root, participant, settings.artifacts_path)
+    logger.info("[%s] Training pipeline triggered on dataset_dir=%s", sid, ds_root)
+    app_pipeline = SleepSenseApp(ds_root, participant, settings.artifacts_path)
 
-    app.preprocessor.preprocess_training_data()
-    processed_df = app.preprocessor.load_preprocessed_training_data()
-    train_out = app.trainer.train_and_select(processed_df, settings.artifacts_path)
-
-    lb_path = Path(train_out["leaderboard_csv"])
-    leaderboard = pd.read_csv(lb_path).to_dict(orient="records")
+    app_pipeline.preprocessor.preprocess_training_data()
+    processed_df = app_pipeline.preprocessor.load_preprocessed_training_data()
+    train_out = app_pipeline.trainer.train_and_select(processed_df, settings.artifacts_path)
+    
     best_name = train_out["best_model"]
+    logger.info("[%s] Cumulative Training complete. Best model: %s", sid, best_name)
 
-    logger.info("Training complete. Best model: %s", best_name)
-    return {"best_model": best_name, "leaderboard": leaderboard}
+    # 2. Predict on the specific session
+    model_path = settings.artifacts_path / "best_model.pkl"
+    csv_path = ds_root / f"compressed_{sid}_whole_df.csv"
+    
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model not found: {model_path}")
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Sensor CSV not found: {csv_path}")
+
+    out_csv = settings.artifacts_path / f"predictions_{sid}.csv"
+    logger.info("[%s] Running prediction → %s", sid, out_csv)
+    app_pipeline.predict(
+        model_pickle=model_path,
+        sensor_csv=csv_path,
+        sid=sid,
+        output_csv=out_csv,
+    )
+
+    row = pd.read_csv(out_csv).iloc[0]
+    proba = float(row["probability_sleep_deprivation"])
+    pred = int(row["prediction"])
+    label = _risk_label(proba)
+
+    preprocessed_path = settings.artifacts_path / f"preprocessed_inference_{sid}.csv"
+    X_df = pd.read_csv(preprocessed_path)
+
+    with open(model_path, "rb") as f:
+        bundle = pickle.load(f)
+    shap_features = _shap_top_features(bundle, X_df)
+
+    result = {
+        "sid": sid,
+        "model_name": best_name,
+        "prediction": pred,
+        "probability": proba,
+        "label": label,
+        "shap_top_features": shap_features,
+        "preprocessed_csv": str(preprocessed_path),
+        "predictions_csv": str(out_csv),
+        "recommendations": [],
+    }
+
+    adv = str(REPO_ROOT / "advanced")
+    if Path(adv).is_dir():
+        if adv not in sys.path:
+            sys.path.insert(0, adv)
+        try:
+            from recommendations import generate_recommendations
+            feat_row = X_df.iloc[0].to_dict()
+            result["recommendations"] = generate_recommendations(feat_row)
+        except Exception as e:
+            logger.warning("Recommendations skipped: %s", e)
+
+    # 3. Store prediction result in the database
+    from database import SessionLocal
+    from models_db import Prediction
+    
+    try:
+        db = SessionLocal()
+        from models_db import Session as SessionModel
+        session_db = db.query(SessionModel).filter(SessionModel.sid == sid).first()
+        if session_db:
+            new_pred = Prediction(
+                session_id=session_db.id,
+                model_name=best_name,
+                prediction=pred,
+                probability=proba,
+                label=label,
+                shap_features=json.dumps(shap_features) if shap_features else None,
+                recommendations_json=json.dumps(result["recommendations"]) if result["recommendations"] else None,
+            )
+            db.add(new_pred)
+            db.commit()
+    except Exception as e:
+        logger.error("Failed to commit prediction to DB: %s", e)
+    finally:
+        if 'db' in locals():
+            db.close()
+
+    return result

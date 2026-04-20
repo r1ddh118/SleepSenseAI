@@ -27,8 +27,10 @@ class Settings(BaseSettings):
     artifacts_path: Path = REPO_ROOT / "artifacts"
     participant_csv: Path = REPO_ROOT / "datasets" / "participant_info.csv"
 
-    mqtt_broker_host: str = "localhost"
-    mqtt_broker_port: int = 1883
+    mqtt_broker_host: str = "indigobumble-39b622a1.a02.usw2.aws.hivemq.cloud"
+    mqtt_broker_port: int = 8883
+    mqtt_username: str = "hivemq.webclient.1776682804651"
+    mqtt_password: str = "Up:#KhGRYou7g603Q>l<"
 
     edge_device: str = "desktop"
 
