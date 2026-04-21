@@ -109,23 +109,44 @@ export function NewSession() {
     setLastDataAt(new Date());
     setRecordingStartedAt(new Date());
     
-    // Connect to WebSocket using current window host
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.host}/api/v1/ws/${id}`;
+    // Connect to backend WebSocket relay (/ws/live/{sid})
+    // If frontend runs on :5173 in dev, route to API on :8001.
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsHost = window.location.port === "5173"
+      ? `${window.location.hostname}:8001`
+      : window.location.host;
+    const wsUrl = `${wsProtocol}//${wsHost}/ws/live/${id}`;
     const ws = new WebSocket(wsUrl);
-    ws.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
-            setLiveData({
-                HR: data.HR || 0,
-                EDA: data.EDA || 0,
-                TEMP: data.TEMP || 0,
-                BVP: data.BVP || 0
-            });
-            setLastDataAt(new Date());
-            setIsReceivingData(true);
-        } catch (e) {}
+
+    ws.onopen = () => {
+      setIsReceivingData(false);
     };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setLiveData({
+          HR: Number(data.HR) || 0,
+          EDA: Number(data.EDA) || 0,
+          TEMP: Number(data.TEMP) || 0,
+          BVP: Number(data.BVP) || 0,
+        });
+        setLastDataAt(new Date());
+        setIsReceivingData(true);
+      } catch {
+        // ignore malformed payloads and continue listening
+      }
+    };
+
+    ws.onerror = () => {
+      setIsReceivingData(false);
+      setValidationError("Live cloud stream connection failed. Check API URL/WebSocket route.");
+    };
+
+    ws.onclose = () => {
+      setIsReceivingData(false);
+    };
+
     wsRef.current = ws;
 
     const totalDurationMs = selectedDurationHours * 3600000;
