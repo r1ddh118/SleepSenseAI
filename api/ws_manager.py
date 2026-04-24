@@ -38,6 +38,17 @@ class WebSocketManager:
         except Exception as e:
             logger.warning("Could not load imputer model: %s", e)
 
+    def _predict_from_bpm(self, bpm: float) -> tuple[float, float, float]:
+        """Predict EDA/TEMP/BVP from HR(BPM) using the trained imputer model."""
+        if self._imputer is None:
+            return 0.0, 0.0, 0.0
+        try:
+            preds = self._imputer.predict(pd.DataFrame({"HR": [bpm]}))
+            return float(preds[0][0]), float(preds[0][1]), float(preds[0][2])
+        except Exception as e:
+            logger.error("HR-only imputation failed: %s", e)
+            return 0.0, 0.0, 0.0
+
     def start_streaming(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop
         logger.info("ThingSpeak relay ready")
@@ -59,7 +70,10 @@ class WebSocketManager:
             if not self._active_csv_path.exists():
                 settings.datasets_path.mkdir(parents=True, exist_ok=True)
                 with open(self._active_csv_path, "w", encoding="utf-8") as f:
-                    f.write("BVP,ACC_X,ACC_Y,ACC_Z,TEMP,EDA,HR,IBI\n")
+                    f.write(
+                        "BVP,ACC_X,ACC_Y,ACC_Z,TEMP,EDA,HR,IBI,"
+                        "EDA_raw,TEMP_raw,BVP_raw,imputed_from_hr\n"
+                    )
 
             if self._loop:
                 self._thingspeak_task = self._loop.create_task(self._poll_thingspeak(sid))
@@ -114,29 +128,29 @@ class WebSocketManager:
         self._last_feed_timestamp = feed_ts
 
         bpm = float(feed.get(settings.thingspeak_hr_field, 0.0) or 0.0)
-        eda_val = float(feed.get(settings.thingspeak_eda_field, 0.0) or 0.0)
-        temp_val = float(feed.get(settings.thingspeak_temp_field, 0.0) or 0.0)
-        bvp_val = float(feed.get(settings.thingspeak_bvp_field, 0.0) or 0.0)
+        eda_raw = float(feed.get(settings.thingspeak_eda_field, 0.0) or 0.0)
+        temp_raw = float(feed.get(settings.thingspeak_temp_field, 0.0) or 0.0)
+        bvp_raw = float(feed.get(settings.thingspeak_bvp_field, 0.0) or 0.0)
 
-        # fallback if some sensors are missing
-        if self._imputer is not None and bpm > 0 and (eda_val == 0.0 or temp_val == 0.0 or bvp_val == 0.0):
-            try:
-                preds = self._imputer.predict(pd.DataFrame({"HR": [bpm]}))
-                if eda_val == 0.0:
-                    eda_val = float(preds[0][0])
-                if temp_val == 0.0:
-                    temp_val = float(preds[0][1])
-                if bvp_val == 0.0:
-                    bvp_val = float(preds[0][2])
-            except Exception as e:
-                logger.error("Imputation failed: %s", e)
+        # HR(BPM)-only real-time prediction path.
+        pred_eda, pred_temp, pred_bvp = self._predict_from_bpm(bpm) if bpm > 0 else (0.0, 0.0, 0.0)
+
+        # Store predicted values in core columns so downstream processing always has EDA/TEMP/BVP.
+        # If model is unavailable, gracefully fall back to raw values from ThingSpeak.
+        eda_val = pred_eda if pred_eda != 0.0 else eda_raw
+        temp_val = pred_temp if pred_temp != 0.0 else temp_raw
+        bvp_val = pred_bvp if pred_bvp != 0.0 else bvp_raw
+        imputed_from_hr = int(pred_eda != 0.0 and pred_temp != 0.0 and pred_bvp != 0.0)
 
         acc_x, acc_y, acc_z = 0.5, 0.5, 0.5
         ibi_val = 60000.0 / bpm if bpm > 0 else 0.0
 
         if self._active_recording_sid == sid and self._active_csv_path:
             with open(self._active_csv_path, "a", encoding="utf-8") as f:
-                f.write(f"{bvp_val},{acc_x},{acc_y},{acc_z},{temp_val},{eda_val},{bpm},{ibi_val}\n")
+                f.write(
+                    f"{bvp_val},{acc_x},{acc_y},{acc_z},{temp_val},{eda_val},{bpm},{ibi_val},"
+                    f"{eda_raw},{temp_raw},{bvp_raw},{imputed_from_hr}\n"
+                )
 
         ws_payload = json.dumps(
             {
