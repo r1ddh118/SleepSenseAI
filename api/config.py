@@ -34,6 +34,14 @@ class Settings(BaseSettings):
 
     edge_device: str = "desktop"
 
+    thingspeak_channel_id: str = ""
+    thingspeak_read_api_key: str = ""
+    thingspeak_poll_seconds: int = 2
+    thingspeak_hr_field: str = "field1"
+    thingspeak_eda_field: str = "field2"
+    thingspeak_temp_field: str = "field3"
+    thingspeak_bvp_field: str = "field4"
+
     @field_validator("src_path", "datasets_path", "artifacts_path", "participant_csv", mode="before")
     @classmethod
     def _coerce_path(cls, v):

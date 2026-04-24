@@ -111,7 +111,7 @@ export function NewSession() {
     
     // Connect to WebSocket using current window host
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.host}/api/v1/ws/${id}`;
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws/live/${id}`;
     const ws = new WebSocket(wsUrl);
     ws.onmessage = (event) => {
         try {
@@ -179,7 +179,7 @@ export function NewSession() {
               </Link>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">New Recording Session</h1>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Connect your Empatica E4 device and start monitoring</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Connect your ThingSpeak cloud feed and start monitoring</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -207,8 +207,8 @@ export function NewSession() {
               <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Wifi className="w-8 h-8 text-blue-600 dark:text-blue-400" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Connect Empatica E4 Device</h2>
-              <p className="text-gray-600 dark:text-gray-400">Make sure your device is powered on and within range</p>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Connect ThingSpeak Sensor Feed</h2>
+              <p className="text-gray-600 dark:text-gray-400">Make sure your channel is publishing BPM, EDA, TEMP and BVP values</p>
             </div>
 
             <div className="space-y-4 mb-8">
@@ -216,9 +216,9 @@ export function NewSession() {
                 <CheckCircle2 className={`w-5 h-5 flex-shrink-0 mt-0.5 ${isSensorConnected ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} />
                 <div>
                   <p className={`font-medium ${isSensorConnected ? "text-green-900 dark:text-green-300" : "text-red-900 dark:text-red-300"}`}>
-                    Raspberry Pi 5 {isSensorConnected ? "Connected" : "Disconnected"}
+                    ThingSpeak API {isSensorConnected ? "Connected" : "Disconnected"}
                   </p>
-                  <p className={`text-sm ${isSensorConnected ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>Device ID: E4-RPi5-001</p>
+                  <p className={`text-sm ${isSensorConnected ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>Data source: Channel field1-field4</p>
                 </div>
               </div>
 
@@ -226,10 +226,10 @@ export function NewSession() {
                 <Activity className={`w-5 h-5 flex-shrink-0 mt-0.5 ${isSensorConnected ? "text-blue-600 dark:text-blue-400 animate-pulse" : "text-gray-500 dark:text-gray-400"}`} />
                 <div>
                   <p className={`font-medium ${isSensorConnected ? "text-blue-900 dark:text-blue-300" : "text-gray-800 dark:text-gray-200"}`}>
-                    Empatica E4 {isSensorConnected ? "Detected" : "Not detected"}
+                    Cloud stream {isSensorConnected ? "Detected" : "Not detected"}
                   </p>
                   <p className={`text-sm ${isSensorConnected ? "text-blue-700 dark:text-blue-400" : "text-gray-600 dark:text-gray-400"}`}>
-                    {isSensorConnected ? "Signal strength: Excellent" : "No signal from paired sensor"}
+                    {isSensorConnected ? "Latest feed received from ThingSpeak" : "No signal from ThingSpeak channel"}
                   </p>
                 </div>
               </div>
