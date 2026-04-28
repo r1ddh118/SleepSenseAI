@@ -21,14 +21,14 @@ async def lifespan(app: FastAPI):
     init_db()
     loop = asyncio.get_event_loop()
     try:
-        ws_manager.start_mqtt(loop)
+        ws_manager.start_streaming(loop)
     except Exception as e:
-        logger.warning("MQTT relay not started (broker may be offline): %s", e)
+        logger.warning("ThingSpeak relay not started: %s", e)
 
     yield
 
     logger.info("SleepSense AI API shutting down...")
-    ws_manager.stop_mqtt()
+    ws_manager.stop_streaming()
 
 
 app = FastAPI(
