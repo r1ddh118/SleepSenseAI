@@ -1,11 +1,16 @@
 """FastAPI app: routers, CORS, lifespan, WebSocket."""
 
-import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+
+API_DIR = Path(__file__).resolve().parent
+if str(API_DIR) not in sys.path:
+    sys.path.insert(0, str(API_DIR))
 
 from database import init_db
 from routers import auth_router, frontend_adapter, health, models, predictions, sessions
@@ -19,16 +24,10 @@ logger = logging.getLogger("main")
 async def lifespan(app: FastAPI):
     logger.info("SleepSense AI API starting up...")
     init_db()
-    loop = asyncio.get_event_loop()
-    try:
-        ws_manager.start_mqtt(loop)
-    except Exception as e:
-        logger.warning("MQTT relay not started (broker may be offline): %s", e)
 
     yield
 
     logger.info("SleepSense AI API shutting down...")
-    ws_manager.stop_mqtt()
 
 
 app = FastAPI(

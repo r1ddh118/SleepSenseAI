@@ -1,17 +1,17 @@
 # SleepSense AI
 
-SleepSense AI is a multimodal sleep analysis stack: an **OOP Python CLI pipeline** in `src/`, a **FastAPI + Celery backend** in `api/` (Phase 2 + SHAP hooks), and scaffold folders for hardware, frontend, validation, packaging, and advanced work.
+SleepSense AI is a multimodal sleep analysis stack: an **OOP Python CLI pipeline** in `src/`, a **FastAPI + Celery backend** in `api/` (Phase 2 + SHAP hooks), and scaffold folders for optional legacy hardware, frontend, validation, packaging, and advanced work.
 
 ## Target layout
 
 ```
 sleepsense-ai/
 ├── src/                 # Phase 0 — CLI pipeline (do not restructure)
-├── hardware/            # Phase 1 — RPi / E4 acquisition (stubs)
-├── api/                 # Phase 2 — FastAPI, Celery, WebSocket/MQTT relay
+├── hardware/            # Optional legacy RPi / E4 acquisition helpers
+├── api/                 # Phase 2 — FastAPI, Celery, WebSocket API
 ├── frontend/            # Phase 3 — React dashboard (scaffold)
 ├── validation/          # Phase 4 — DREAMT / Wearanize, metrics, IRB, regulatory
-├── packaging/           # Phase 5 — RPi systemd, prod compose, nginx, Mosquitto
+├── packaging/           # Phase 5 — RPi systemd, prod compose, nginx
 ├── advanced/            # Phase 6 — SHAP CLI, recommendations, FL stub, LSTM
 ├── datasets/            # raw data (large files gitignored as needed)
 ├── artifacts/           # models, CSV outputs (gitignored)
@@ -25,10 +25,10 @@ Entrypoint: `src/main.py` (`preprocess`, `eda`, `train`, `predict`). See **CLI W
 
 ## Phase 2 — Backend (FastAPI)
 
-Stack: FastAPI, SQLAlchemy (SQLite or Postgres), Celery + Redis, WebSocket + MQTT relay, JWT auth.
+Stack: FastAPI, SQLAlchemy (SQLite or Postgres), Celery + Redis, WebSocket, JWT auth.
 ## Unified app launcher (single terminal)
 
-If your local stack feels broken because API, worker, broker, and frontend need separate terminals, use the new root `app.py` launcher. It starts the services together and shuts them down together.
+If your local stack feels broken because API, worker, Redis, and frontend need separate terminals, use the root `app.py` launcher. It starts the services together and shuts them down together.
 
 ```bash
 # from repo root
@@ -37,7 +37,6 @@ python app.py
 
 What it starts by default:
 - Redis (`redis-server`)
-- Mosquitto MQTT broker (`mosquitto`)
 - Celery worker (`celery -A tasks worker --loglevel=info`)
 - FastAPI (`uvicorn main:app --reload --port 8000`)
 - Frontend Vite dev server (`npm run dev -- --host`)
@@ -46,10 +45,8 @@ Useful flags:
 
 ```bash
 python app.py --no-frontend      # run backend only
-python app.py --no-mqtt          # disable MQTT broker
 python app.py --no-redis         # disable redis (if you provide an external redis)
 python app.py --api-port 8080    # change API port
-python app.py --mqtt-port 1884   # change MQTT port
 ```
 
 Press `Ctrl+C` once to stop all services cleanly.
@@ -72,18 +69,15 @@ Manual multi-terminal option (legacy):
 redis-server
 
 # Terminal 2
-mosquitto -p 1883
-
-# Terminal 3
 cd api
 pip install -r requirements_api.txt
 celery -A tasks worker --loglevel=info
 
-# Terminal 4
+# Terminal 3
 cd api
 uvicorn main:app --reload --port 8000
 
-# Terminal 5
+# Terminal 4
 cd frontend && npm install && npm run dev -- --host
 ```
 
@@ -109,7 +103,7 @@ API and worker share a named volume for SQLite at `/app/db/sleepsense.db`. Mount
 | GET | `/api/v1/sessions/` | User | List sessions |
 | GET | `/api/v1/sessions/{sid}` | User | Get session |
 | PATCH | `/api/v1/sessions/{sid}` | User | Update session |
-| POST | `/api/v1/sessions/{sid}/complete` | — | Mark complete (hardware) |
+| POST | `/api/v1/sessions/{sid}/complete` | — | Mark complete |
 | POST | `/api/v1/sessions/{sid}/predict` | User | Queue prediction |
 | GET | `/api/v1/sessions/{sid}/predictions` | User | List results |
 | GET | `/api/v1/sessions/{sid}/report` | User | Download CSV |
@@ -119,7 +113,7 @@ API and worker share a named volume for SQLite at `/app/db/sleepsense.db`. Mount
 | GET | `/api/v1/models/clinical-metrics` | Clinician | Rows from `validation/clinical_metrics_report.csv` |
 | GET | `/api/v1/sessions/{sid}/trend` | User | Last ≤7 nights with predictions (same user) |
 | GET | `/api/v1/health` | — | Health |
-| WS | `/ws/live/{sid}` | — | Live stream (MQTT relay) |
+| WS | `/ws/live/{sid}` | — | WebSocket channel for live clients |
 
 Prediction task results and stored rows can include `shap_top_features` (tree models) and `recommendations` (rule-based, from `advanced/recommendations.py`).
 
@@ -166,19 +160,13 @@ Prediction task results and stored rows can include `shap_top_features` (tree mo
   Nginx proxies `/api/`, `/docs`, `/openapi.json`, and `/ws/` to the API container; static files from `frontend/dist`.
 
 
-## Hardware connectivity quick check (MQTT + API relay)
+## Optional Legacy Hardware
 
-1. Start the stack with `python app.py` (or ensure API + Mosquitto are running).
-2. Open a WebSocket client to `ws://localhost:8000/ws/live/S002`.
-3. Publish a test message:
+Hardware/MQTT helpers are not required for the primary API, Celery, or analytics workflow. If you need the old hardware scripts, install their optional dependencies separately:
 
 ```bash
-mosquitto_pub -h localhost -p 1883 -t sleepsense/S002/eda -m '{"eda": 2.1, "ts": 1710000000}'
+pip install -r requirements-hardware.txt
 ```
-
-If the WebSocket receives that payload, frontend live charts can consume hardware stream data through the backend relay.
-
-For hardware scripts, `hardware/mqtt_publisher.py` now includes a reusable `MQTTPublisher` class plus `publish_sample(topic, payload)` helper.
 
 ## Phase 6 — Advanced
 

@@ -10,7 +10,6 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 celery==5.4.0
 redis==5.0.4
-paho-mqtt==1.6.1
 aiofiles==23.2.1
 pandas==2.2.2
 numpy==1.26.4
