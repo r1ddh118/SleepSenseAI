@@ -1,17 +1,35 @@
+# SleepSense AI — Core Requirements
+# PySpark-based sleep analytics platform (no hardware/sensor dependencies required)
+
+# Web framework
 fastapi
-uvicorn
-celery
+uvicorn[standard]
+
+# Async task queue
+celery[redis]
 redis
+
+# Data processing — PySpark is the primary engine
+pyspark>=3.4.0
+
+# Analytics helpers (plain Python business logic layer)
 pandas
 numpy
+
+# ML — legacy sklearn models (kept for backward compat)
 scikit-learn
 xgboost
-shap
-tensorflow
-matplotlib
-pydantic
+
+# Report generation
+jinja2
+
+# API / Auth / DB
+pydantic>=2.0
 pydantic-settings
 SQLAlchemy
-paho-mqtt
-passlib
-python-jose
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+
+# Utilities
+matplotlib

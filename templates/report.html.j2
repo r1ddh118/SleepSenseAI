@@ -1,0 +1,294 @@
+{% set meta = meta %}
+{% set ss = sleep_summary %}
+{% set lt = longitudinal_trend %}
+{% set ra = risk_assessment %}
+{% set recs = recommendations %}
+{% set lifestyle = lifestyle %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SleepSense AI Report — {{ meta.session_id }}</title>
+  <style>
+    :root {
+      --navy: #16213e;
+      --blue: #0f3460;
+      --red: #e94560;
+      --bg: #f8f9fa;
+      --card-bg: #fff;
+      --text: #212529;
+      --muted: #6c757d;
+      --border: #dee2e6;
+      --success: #198754;
+      --warning: #fd7e14;
+      --danger: #dc3545;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .container { max-width: 960px; margin: 0 auto; padding: 2rem 1rem; }
+    .header {
+      background: linear-gradient(135deg, var(--navy), var(--blue));
+      color: #fff;
+      padding: 2rem;
+      border-radius: 12px;
+      margin-bottom: 1.5rem;
+    }
+    .header h1 { font-size: 1.75rem; }
+    .header .meta { opacity: 0.8; font-size: 0.85rem; margin-top: 0.5rem; }
+    .disclaimer {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 1rem 1.5rem;
+      border-radius: 6px;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+    }
+    .disclaimer strong { display: block; margin-bottom: 0.25rem; }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    }
+    .card h2 {
+      font-size: 1.1rem;
+      color: var(--blue);
+      border-bottom: 2px solid var(--red);
+      padding-bottom: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .score-big {
+      font-size: 4rem;
+      font-weight: 800;
+      color: var(--red);
+      text-align: center;
+      line-height: 1;
+    }
+    .score-label {
+      text-align: center;
+      color: var(--muted);
+      font-size: 1.1rem;
+      margin-top: 0.25rem;
+      margin-bottom: 0.5rem;
+    }
+    .score-note { text-align: center; font-size: 0.78rem; color: var(--muted); }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .metric {
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      text-align: center;
+    }
+    .metric .val { font-size: 1.5rem; font-weight: 700; color: var(--navy); }
+    .metric .label { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid var(--border); padding: 0.6rem 0.85rem; text-align: left; font-size: 0.88rem; }
+    th { background: var(--navy); color: #fff; font-weight: 600; }
+    tr:nth-child(even) { background: #f2f4f7; }
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.65rem;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    .HIGH    { background: #dc3545; color: #fff; }
+    .MODERATE{ background: #fd7e14; color: #fff; }
+    .LOW     { background: #198754; color: #fff; }
+    .severity-critical { background: #f8d7da; border-left: 3px solid #dc3545; }
+    .severity-warning  { background: #fff3cd; border-left: 3px solid #ffc107; }
+    .severity-info     { background: #d1ecf1; border-left: 3px solid #17a2b8; }
+    .severity-ok       { background: #d4edda; border-left: 3px solid #28a745; }
+    .rec-item {
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      margin-bottom: 0.75rem;
+      font-size: 0.88rem;
+    }
+    .rec-item .rec-area { font-weight: 700; font-size: 0.78rem; letter-spacing: .04em; text-transform: uppercase; }
+    .footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>🌙 SleepSense AI Analytical Screening Report</h1>
+    <div class="meta">
+      Session: {{ meta.session_id }} &nbsp;|&nbsp;
+      Patient: {{ meta.user_id }} &nbsp;|&nbsp;
+      Date: {{ meta.period_end or "N/A" }} &nbsp;|&nbsp;
+      Generated: {{ meta.report_generated_at }}
+    </div>
+  </div>
+
+  <!-- Disclaimer -->
+  <div class="disclaimer">
+    <strong>⚠️ IMPORTANT DISCLAIMER</strong>
+    {{ disclaimer }}
+  </div>
+
+  <!-- Sleep Summary -->
+  <div class="card">
+    <h2>Sleep Summary</h2>
+    <div class="score-big">{{ ss.sleep_score | round(1) if ss.sleep_score else 'N/A' }}</div>
+    <div class="score-label">{{ ss.sleep_category or '' }}</div>
+    <div class="score-note">{{ ss.score_disclaimer }}</div>
+
+    <div class="metrics-grid">
+      <div class="metric">
+        <div class="val">{{ "%.0f%%"|format((ss.sleep_efficiency or 0) * 100) }}</div>
+        <div class="label">Sleep Efficiency</div>
+      </div>
+      <div class="metric">
+        <div class="val">{{ "%.1fh"|format(ss.sleep_duration_hours or 0) }}</div>
+        <div class="label">Duration</div>
+      </div>
+      <div class="metric">
+        <div class="val">{{ "%.0f%%"|format((ss.n3_fraction or 0) * 100) }}</div>
+        <div class="label">Deep Sleep (N3)</div>
+      </div>
+      <div class="metric">
+        <div class="val">{{ "%.0f%%"|format((ss.rem_fraction or 0) * 100) }}</div>
+        <div class="label">REM Sleep</div>
+      </div>
+      <div class="metric">
+        <div class="val">{{ "%.0f%%"|format((ss.wake_fraction or 0) * 100) }}</div>
+        <div class="label">Wake Time</div>
+      </div>
+      <div class="metric">
+        <div class="val">{{ "%.0f"|format(ss.avg_hr or 0) }} bpm</div>
+        <div class="label">Avg Heart Rate</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Longitudinal Trend -->
+  <div class="card">
+    <h2>7-Day Trend</h2>
+    <div class="metrics-grid">
+      <div class="metric">
+        <div class="val">{{ "%.1f"|format(lt.sleep_score_7d_avg or 0) }}</div>
+        <div class="label">Sleep Score (7d avg)</div>
+      </div>
+      <div class="metric">
+        <div class="val">{{ "%.1fh"|format(lt.duration_7d_avg or 0) }}</div>
+        <div class="label">Duration (7d avg)</div>
+      </div>
+      <div class="metric">
+        <div class="val">{{ "%.0f%%"|format((lt.efficiency_7d_avg or 0) * 100) }}</div>
+        <div class="label">Efficiency (7d avg)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Risk Assessment -->
+  {% if ra %}
+  <div class="card">
+    <h2>Risk Screening Indicators</h2>
+    <p>
+      <strong>Overall Risk Level:</strong>
+      <span class="badge {{ ra.overall_risk_level or 'LOW' }}">{{ ra.overall_risk_level or 'LOW' }}</span>
+    </p>
+    {% if ra.risk_flags %}
+    <br>
+    <table>
+      <tr><th>Category</th><th>Risk</th><th>Evidence</th></tr>
+      {% for flag in ra.risk_flags %}
+      <tr>
+        <td>{{ flag.label }}</td>
+        <td><span class="badge {{ flag.risk }}">{{ flag.risk }}</span></td>
+        <td>{{ flag.reasons | join('; ') if flag.reasons else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    <p style="margin-top:0.75rem;font-size:0.8rem;color:#666">
+      ⚠️ {{ ra.disclaimer if ra.disclaimer else 'Risk levels are screening indicators only — not a medical diagnosis.' }}
+    </p>
+  </div>
+  {% endif %}
+
+  <!-- Lifestyle -->
+  <div class="card">
+    <h2>Lifestyle Factors</h2>
+    <div class="metrics-grid">
+      <div class="metric">
+        <div class="val">{{ lifestyle.caffeine_mg | round(0) | int if lifestyle.caffeine_mg else '—' }} mg</div>
+        <div class="label">Caffeine</div>
+      </div>
+      <div class="metric">
+        <div class="val">{{ lifestyle.screen_time_min | round(0) | int if lifestyle.screen_time_min else '—' }} min</div>
+        <div class="label">Screen Time</div>
+      </div>
+      <div class="metric">
+        <div class="val">{{ lifestyle.exercise_min | round(0) | int if lifestyle.exercise_min else '—' }} min</div>
+        <div class="label">Exercise</div>
+      </div>
+      <div class="metric">
+        <div class="val">{{ lifestyle.stress_level | round(1) if lifestyle.stress_level else '—' }}/10</div>
+        <div class="label">Stress Level</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recommendations -->
+  {% if recommendations %}
+  <div class="card">
+    <h2>Personalised Recommendations</h2>
+    {% for rec in recommendations %}
+    <div class="rec-item severity-{{ rec.severity }}">
+      <div class="rec-area">{{ rec.area | replace('_', ' ') }}</div>
+      <div>{{ rec.message }}</div>
+      <div style="font-size:0.75rem;color:#888;margin-top:0.25rem">Triggered by: {{ rec.triggered_by }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Model Info -->
+  <div class="card">
+    <h2>Model & Methodology</h2>
+    <table>
+      <tr><th>Field</th><th>Value</th></tr>
+      <tr><td>Scoring Model</td><td>{{ model_info.scoring_model }}</td></tr>
+      <tr><td>ML Evaluation Methodology</td><td>{{ model_info.evaluation_note }}</td></tr>
+      <tr><td>Clinically Validated</td><td>No — academic analytics tool only</td></tr>
+    </table>
+  </div>
+
+  <!-- Footer Disclaimer -->
+  <div class="disclaimer">
+    <strong>⚠️ FINAL DISCLAIMER</strong>
+    {{ disclaimer }}
+  </div>
+
+  <div class="footer">
+    SleepSense AI — Academic PySpark Sleep Analytics Platform · Report generated {{ meta.report_generated_at }}
+  </div>
+
+</div>
+</body>
+</html>

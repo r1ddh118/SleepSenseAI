@@ -27,14 +27,28 @@ class Settings(BaseSettings):
     artifacts_path: Path = REPO_ROOT / "artifacts"
     participant_csv: Path = REPO_ROOT / "datasets" / "participant_info.csv"
 
-    mqtt_broker_host: str = "indigobumble-39b622a1.a02.usw2.aws.hivemq.cloud"
+    # PySpark data directories
+    data_raw_path: Path = REPO_ROOT / "data" / "raw"
+    data_processed_path: Path = REPO_ROOT / "data" / "processed"
+    data_synthetic_path: Path = REPO_ROOT / "data" / "synthetic"
+    data_parquet_path: Path = REPO_ROOT / "data" / "parquet"
+    reports_path: Path = REPO_ROOT / "reports" / "generated"
+
+    # MQTT / Hardware — optional, only used when paho-mqtt is installed
+    # (see requirements-hardware.txt). Leave empty to disable.
+    mqtt_broker_host: str = ""
     mqtt_broker_port: int = 8883
-    mqtt_username: str = "hivemq.webclient.1776682804651"
-    mqtt_password: str = "Up:#KhGRYou7g603Q>l<"
+    mqtt_username: str = ""
+    mqtt_password: str = ""
 
     edge_device: str = "desktop"
 
-    @field_validator("src_path", "datasets_path", "artifacts_path", "participant_csv", mode="before")
+    @field_validator(
+        "src_path", "datasets_path", "artifacts_path", "participant_csv",
+        "data_raw_path", "data_processed_path", "data_synthetic_path",
+        "data_parquet_path", "reports_path",
+        mode="before",
+    )
     @classmethod
     def _coerce_path(cls, v):
         return Path(v) if v is not None and not isinstance(v, Path) else v

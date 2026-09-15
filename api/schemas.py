@@ -113,3 +113,109 @@ class HealthOut(BaseModel):
     database: str
     redis: str
     version: str = "1.0.0"
+
+
+# ─── PySpark-era schemas ────────────────────────────────────────────────────
+
+class ManualSleepSessionCreate(BaseModel):
+    """Manual sleep entry submitted from the frontend form."""
+    user_id: str                          # e.g. "U034"
+    date: str                             # YYYY-MM-DD
+    bed_time: Optional[str] = None        # HH:MM or "Unknown"
+    sleep_onset: Optional[str] = None
+    wake_time: Optional[str] = None
+    sleep_duration_hours: Optional[float] = None
+    awakenings: Optional[int] = None
+    caffeine_mg: Optional[float] = None
+    screen_time_min: Optional[float] = None
+    exercise_minutes: Optional[float] = None
+    stress_level: Optional[float] = None  # 1–10
+    nap_minutes: Optional[float] = None
+    avg_hr: Optional[float] = None        # if available (wearable)
+    avg_spo2: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class ManualSleepSessionOut(BaseModel):
+    id: int
+    session_id: str
+    user_str_id: Optional[str]
+    date: Optional[str]
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SleepAnalyticsOut(BaseModel):
+    """Spark-computed analytics for a session."""
+    session_id: str
+    date: Optional[str]
+    sleep_score: Optional[float]
+    sleep_category: Optional[str]
+    sleep_efficiency: Optional[float]
+    sleep_duration_hours: Optional[float]
+    n3_fraction: Optional[float]
+    rem_fraction: Optional[float]
+    wake_fraction: Optional[float]
+    avg_hr: Optional[float]
+    hr_std: Optional[float]
+    event_rate: Optional[float]
+    sleep_score_7d_avg: Optional[float]
+    sleep_score_14d_avg: Optional[float]
+    duration_7d_avg: Optional[float]
+    risk_level: Optional[str]
+    risk_json: Optional[dict] = None
+    recommendations: Optional[list] = None
+    disclaimer: str = (
+        "This sleep score is an academic analytics metric — NOT clinically validated. "
+        "Consult a qualified healthcare professional for clinical assessment."
+    )
+    model_config = {"from_attributes": True}
+
+
+class DoctorAlertOut(BaseModel):
+    id: int
+    patient_str_id: Optional[str]
+    session_id: Optional[str]
+    severity: str
+    reason: Optional[str]
+    evidence_json: Optional[dict] = None
+    status: str
+    created_at: datetime
+    acknowledged_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AlertAcknowledgeRequest(BaseModel):
+    note: Optional[str] = None
+
+
+class DoctorReportOut(BaseModel):
+    id: int
+    patient_str_id: Optional[str]
+    session_id: Optional[str]
+    period_start: Optional[str]
+    period_end: Optional[str]
+    file_path: Optional[str]
+    format: Optional[str]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SleepTrendPoint(BaseModel):
+    date: str
+    sleep_score: Optional[float]
+    sleep_score_7d_avg: Optional[float]
+    sleep_duration_hours: Optional[float]
+    sleep_efficiency: Optional[float]
+    n3_fraction: Optional[float]
+    rem_fraction: Optional[float]
+    risk_level: Optional[str]
+
+
+class UserSleepTrendOut(BaseModel):
+    user_id: str
+    nights: List[SleepTrendPoint]

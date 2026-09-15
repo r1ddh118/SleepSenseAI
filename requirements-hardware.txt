@@ -1,0 +1,13 @@
+# SleepSense AI — Hardware / Legacy Optional Dependencies
+# Install ONLY if connecting ESP32/HiveMQ sensor hardware.
+# These are NOT required for the PySpark analytics pipeline.
+
+# MQTT broker client (ESP32/HiveMQ integration)
+paho-mqtt>=1.6.1
+
+# TensorFlow (legacy sensor imputer model)
+tensorflow
+
+# Raspberry Pi / sensor-specific
+# RPi.GPIO    # uncomment on RPi
+# e4-python   # uncomment for Empatica E4 wristband

@@ -1,4 +1,4 @@
-"""FastAPI app: routers, CORS, lifespan, WebSocket."""
+"""FastAPI app: routers, CORS, lifespan. PySpark analytics edition."""
 
 import asyncio
 import logging
@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
 from routers import auth_router, frontend_adapter, health, models, predictions, sessions
+from routers import analytics_router, alerts, reports
 from ws_manager import ws_manager
 
 logging.basicConfig(level=logging.INFO)
@@ -17,13 +18,15 @@ logger = logging.getLogger("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("SleepSense AI API starting up...")
+    logger.info("SleepSense AI API starting up (PySpark edition)...")
     init_db()
+
+    # MQTT relay is optional — only active when paho-mqtt is installed
     loop = asyncio.get_event_loop()
     try:
         ws_manager.start_mqtt(loop)
     except Exception as e:
-        logger.warning("MQTT relay not started (broker may be offline): %s", e)
+        logger.warning("MQTT relay not started (hardware mode disabled): %s", e)
 
     yield
 
@@ -33,8 +36,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SleepSense AI API",
-    version="1.0.0",
-    description="Embedded multimodal sleep analysis REST API",
+    version="2.0.0",
+    description=(
+        "Scalable Sleep Analytics and Risk Screening Using PySpark. "
+        "DISCLAIMER: All risk indicators and sleep scores are analytical screening tools "
+        "and do NOT constitute a medical diagnosis."
+    ),
     lifespan=lifespan,
 )
 
@@ -50,12 +57,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Legacy routers (preserved for backward compatibility)
 app.include_router(auth_router.router)
 app.include_router(sessions.router)
 app.include_router(predictions.router)
 app.include_router(models.router)
 app.include_router(health.router)
 app.include_router(frontend_adapter.router)
+
+# New PySpark-era routers
+app.include_router(analytics_router.router)
+app.include_router(alerts.router)
+app.include_router(reports.router)
 
 
 @app.websocket("/ws/live/{sid}")

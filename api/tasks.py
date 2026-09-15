@@ -1,6 +1,11 @@
 """
 Celery tasks for async ML jobs. Worker: celery -A tasks worker --loglevel=info
-Loads the pipeline from src/main.py explicitly to avoid clashing with api/main.py.
+
+Tasks:
+  run_sleep_analytics    — NEW: Spark pipeline for manual/per-session entries
+  run_prediction         — legacy sklearn prediction
+  run_training_and_prediction — legacy sklearn train+predict
+  run_training           — legacy sklearn training
 """
 
 import importlib.util
@@ -275,3 +280,173 @@ def run_training(self, dataset_path: str | None = None) -> dict:
 
     logger.info("Training complete. Best model: %s", best_name)
     return {"best_model": best_name, "leaderboard": leaderboard}
+
+
+# ─── NEW: PySpark analytics task ─────────────────────────────────────────────
+
+@app.task(bind=True, name="tasks.run_sleep_analytics")
+def run_sleep_analytics(
+    self,
+    session_id: str,
+    user_id: str,
+    raw_csv_path: str,
+) -> dict:
+    """Run the Spark pipeline for a single manual sleep entry.
+
+    Called by Celery worker ONLY — never called inline in a FastAPI handler.
+    Calls the same spark/pipeline.py functions used by the bulk path.
+    Saves results to DB: SleepAnalytics, DoctorAlert (if warranted).
+    """
+    import sys
+    import json as _json
+    from pathlib import Path as P
+
+    repo_root = P(REPO_ROOT)
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
+    logger.info("[%s] Spark pipeline starting for user=%s", session_id, user_id)
+
+    try:
+        from spark.pipeline import run_pipeline_for_user
+
+        parquet_output = repo_root / "data" / "parquet"
+        result = run_pipeline_for_user(
+            user_id=user_id,
+            session_id=session_id,
+            raw_csv_path=raw_csv_path,
+            parquet_output_path=parquet_output,
+        )
+        logger.info("[%s] Spark pipeline complete: score=%s", session_id, result.get("sleep_score"))
+
+    except Exception as e:
+        logger.error("[%s] Spark pipeline failed: %s", session_id, e, exc_info=True)
+        result = {"status": "failed", "error": str(e)}
+
+    # Run analytics (risk + recommendations) on the result dict
+    risk_json = None
+    recommendations_json = None
+    try:
+        from analytics.condition_risk import assess_all_risks
+        from analytics.recommendations import generate_recommendations
+
+        risk = assess_all_risks(result)
+        risk_json = _json.dumps(risk, default=str)
+
+        recs = generate_recommendations(
+            sleep_metrics=result,
+            risk_metrics=risk,
+            lifestyle_metrics=result,
+            longitudinal_metrics=result,
+        )
+        recommendations_json = _json.dumps(recs, default=str)
+    except Exception as e:
+        logger.warning("[%s] Analytics post-processing failed: %s", session_id, e)
+
+    # Store in DB
+    from database import SessionLocal
+    from models_db import DoctorAlert, ManualSleepSession, SleepAnalytics
+
+    db = SessionLocal()
+    try:
+        # Update ManualSleepSession status
+        manual = db.query(ManualSleepSession).filter(
+            ManualSleepSession.session_id == session_id
+        ).first()
+        if manual:
+            manual.status = "COMPLETE" if "error" not in result else "FAILED"
+
+        # Create SleepAnalytics row
+        analytics_row = SleepAnalytics(
+            user_str_id=user_id,
+            session_id=session_id,
+            date=result.get("date"),
+            sleep_score=result.get("sleep_score"),
+            sleep_category=result.get("sleep_category"),
+            sleep_efficiency=result.get("sleep_efficiency"),
+            sleep_duration_hours=result.get("sleep_duration_hours"),
+            n3_fraction=result.get("n3_fraction"),
+            rem_fraction=result.get("rem_fraction"),
+            wake_fraction=result.get("wake_fraction"),
+            avg_hr=result.get("avg_hr"),
+            hr_std=result.get("hr_std"),
+            event_rate=result.get("event_rate"),
+            sleep_score_7d_avg=result.get("sleep_score_7d_avg"),
+            sleep_score_14d_avg=result.get("sleep_score_14d_avg"),
+            duration_7d_avg=result.get("duration_7d_avg"),
+            risk_level=result.get("risk_level"),
+            risk_json=risk_json,
+            recommendations_json=recommendations_json,
+            spark_job_id=self.request.id,
+        )
+        if manual:
+            analytics_row.manual_session_id = manual.id
+        db.add(analytics_row)
+
+        # Evaluate doctor alert persistence
+        try:
+            recent_analytics = (
+                db.query(SleepAnalytics)
+                .filter(SleepAnalytics.user_str_id == user_id)
+                .order_by(SleepAnalytics.date.desc())
+                .limit(7)
+                .all()
+            )
+            recent_nights = [
+                {
+                    "date": r.date,
+                    "sleep_score": r.sleep_score,
+                    "risk_level": r.risk_level,
+                    "wake_fraction": r.wake_fraction,
+                    "event_rate": r.event_rate,
+                }
+                for r in reversed(recent_analytics)
+            ]
+            # Add current night to the list
+            recent_nights.append({
+                "date": result.get("date"),
+                "sleep_score": result.get("sleep_score"),
+                "risk_level": result.get("risk_level"),
+                "wake_fraction": result.get("wake_fraction"),
+                "event_rate": result.get("event_rate"),
+            })
+
+            from analytics.alerts import evaluate_alert
+            alert_result = evaluate_alert(recent_nights)
+
+            if alert_result["should_alert"]:
+                # Check if there's already an open alert for this user
+                existing = db.query(DoctorAlert).filter(
+                    DoctorAlert.patient_str_id == user_id,
+                    DoctorAlert.status == "OPEN",
+                ).first()
+                if not existing:
+                    alert_row = DoctorAlert(
+                        patient_str_id=user_id,
+                        session_id=session_id,
+                        severity=alert_result["severity"],
+                        reason=alert_result["reasons"][0] if alert_result["reasons"] else "",
+                        evidence_json=_json.dumps(alert_result["evidence_json"], default=str),
+                        status="OPEN",
+                    )
+                    db.add(alert_row)
+                    logger.info("[%s] DoctorAlert created: %s", session_id, alert_result["severity"])
+
+        except Exception as e:
+            logger.warning("[%s] Alert evaluation failed: %s", session_id, e)
+
+        db.commit()
+        logger.info("[%s] DB updated successfully", session_id)
+
+    except Exception as e:
+        logger.error("[%s] DB commit failed: %s", session_id, e)
+    finally:
+        db.close()
+
+    return {
+        "session_id": session_id,
+        "user_id": user_id,
+        "sleep_score": result.get("sleep_score"),
+        "risk_level": result.get("risk_level"),
+        "status": "complete",
+    }
