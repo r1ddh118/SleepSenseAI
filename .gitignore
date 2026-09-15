@@ -36,6 +36,8 @@ Thumbs.db
 
 # Project-generated artifacts
 artifacts/
+data/synthetic/
+data/parquet/
 
 # Local DB / secrets
 sleepsense.db
@@ -53,5 +55,3 @@ frontend/dist/
 # Local tooling state
 .codex
 .sixth/
-
-artifacts/
