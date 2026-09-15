@@ -24,7 +24,7 @@ def get_db():
 
 
 def init_db():
-    from models_db import Prediction, Session, User  # noqa: F401
+    from models_db import DoctorAlert, Prediction, Session, User  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 

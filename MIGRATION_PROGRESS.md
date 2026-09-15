@@ -668,6 +668,245 @@ Manual synthetic user inspection:
 Confirmed the Parquet schema includes all requested risk feature columns and
 `risk_flags_json`.
 
+## Step 8: Longitudinal Analytics Trends
+
+### What Was Done
+
+- Updated `spark/longitudinal.py`.
+- The module now computes rolling per-user averages and trend deltas for:
+  - sleep score
+  - sleep efficiency
+  - duration
+  - REM fraction
+  - N3 fraction
+  - wake fraction
+  - average HR
+  - stress level
+  - risk score
+  - event rate
+- The primary demo/dashboard windows are:
+  - 7-day window: `Window.partitionBy("user_id").orderBy("date").rowsBetween(-6, 0)`
+  - 14-day window: `Window.partitionBy("user_id").orderBy("date").rowsBetween(-13, 0)`
+- Existing 30-day window output is retained for compatibility with prior
+  pipeline output.
+- For each signal/window pair, the module emits:
+  - `{signal}_{window}d_avg`
+  - `{signal}_{window}d_trend`
+- It also emits:
+  - `nights_in_7d_window`
+  - `nights_in_14d_window`
+  - `nights_in_30d_window`
+
+### Why It Was Done
+
+The analytics dashboard needs longitudinal context, not just one-night metrics.
+Rolling averages and trend deltas make it possible to show whether sleep score,
+duration, REM, N3, wake, HR, and stress are improving or deteriorating over
+recent nights.
+
+### How It Was Done
+
+- Centralized longitudinal signals in a `signals` mapping inside
+  `add_longitudinal_metrics(df)`.
+- Used Spark window functions over each user's ordered nightly rows.
+- Defined trend as:
+
+```text
+current_value - rolling_average
+```
+
+This means negative score/duration/REM/N3 trends indicate the current night is
+below the recent rolling average, while positive wake/HR/stress trends indicate
+the current night is above the recent rolling average.
+
+### Verification
+
+Compiled the module:
+
+```bash
+python -m py_compile spark/longitudinal.py
+```
+
+Before this edit, the existing generated Parquet was inspected for the Phase-9
+demo patient `U034`:
+
+```bash
+python -c "
+from spark.spark_session import create_spark_session
+spark = create_spark_session()
+df = spark.read.parquet('data/parquet')
+df.filter(df.user_id=='U034').select('date','sleep_score','sleep_score_7d_avg').orderBy('date').show()
+spark.stop()
+"
+```
+
+The final visible demo segment already showed the expected downward 7-day score
+trend:
+
+- `2026-03-05`: `sleep_score_7d_avg` about `90.64`
+- `2026-03-07`: `sleep_score_7d_avg` about `87.61`
+- `2026-03-09`: `sleep_score_7d_avg` about `79.27`
+- `2026-03-11`: `sleep_score_7d_avg` about `66.19`
+
+Pending verification:
+
+- Re-run `python scripts/run_spark_pipeline.py` after Spark execution approval is
+  available so `data/parquet/` is regenerated from the updated
+  `spark/longitudinal.py`.
+- Re-run the U034 check against the regenerated Parquet table.
+
+## Step 9: Metric-Triggered Recommendations
+
+### What Was Done
+
+- Added `analytics/recommendations.py`.
+- Refactored `advanced/recommendations.py` into a compatibility wrapper around
+  the new analytics module.
+- Added `tests/test_recommendations.py`.
+
+### Why It Was Done
+
+The old recommendation function accepted a single feature row and could return
+generic advice. The migration requires recommendations to sit on top of
+Spark-computed analytics and to be explainable: every recommendation must point
+to the exact metric that triggered it.
+
+### How It Was Done
+
+- New signature:
+
+```python
+generate_recommendations(
+    sleep_metrics,
+    risk_metrics,
+    lifestyle_metrics,
+    longitudinal_metrics,
+)
+```
+
+- Each recommendation includes:
+  - `code`
+  - `area`
+  - `severity`
+  - `trigger.metric`
+  - `trigger.value`
+  - `trigger.threshold`
+  - `message`
+- Missing metrics do not trigger recommendations.
+- Good metrics do not produce generic "keep it up" advice.
+- Legacy callers importing `advanced.recommendations.generate_recommendations`
+  still work through a thin adapter, but the old generic rule body was removed.
+
+### Verification
+
+Ran the requested check:
+
+```bash
+python -m pytest tests/ -k recommendations -v
+```
+
+Observed:
+
+- `3 passed`
+- `8 deselected`
+
+Manual bad-sleep input:
+
+- `screen_time=185`
+- `stress_level=8`
+- `n3_fraction=0.06`
+- `caffeine=90`
+
+Observed recommendation areas:
+
+- `deep_sleep`
+- `fragmentation`
+- `efficiency`
+- `duration`
+- `screen_time`
+- `stress`
+
+No caffeine recommendation was emitted because caffeine was below the configured
+threshold.
+
+## Step 10: Doctor Alerts
+
+### What Was Done
+
+- Added `analytics/alerts.py`.
+  - Evaluates persistence-based doctor alert rules.
+  - A single noisy night does not create an alert.
+- Added `DoctorAlert` ORM model in `api/models_db.py`.
+- Updated `api/database.py` so `DoctorAlert` is included in DB initialization.
+- Added `api/routers/alerts.py`.
+  - `GET /api/v1/doctor/alerts`
+  - `POST /api/v1/doctor/alerts/{id}/acknowledge`
+  - `POST /api/v1/doctor/alerts/{id}/resolve`
+  - Helper: `create_alerts_for_history(db, nightly_rows, doctor_id=None)`
+- Registered the alerts router in `api/main.py`.
+- Added `DoctorAlertOut` schema in `api/schemas.py`.
+- Added `tests/test_alerts.py`.
+
+### Why It Was Done
+
+Doctor alerts must be persistence-based, not triggered by one noisy night. This
+implements the blueprint guardrail that alerts require sustained evidence before
+appearing in a doctor workflow.
+
+### How It Was Done
+
+The alert rules currently include:
+
+- `risk_level == HIGH` for at least 3 consecutive nights.
+- `sleep_score < 50` for at least 5 of the last 7 nights.
+- `event_rate >= 0.025` for at least 4 of the last 7 nights, or at least 3
+  consecutive nights.
+
+Each alert stores:
+
+- patient ID
+- session ID
+- alert type
+- severity
+- reason
+- evidence JSON
+- lifecycle status: `OPEN`, `ACKNOWLEDGED`, or `RESOLVED`
+
+The API lifecycle can acknowledge and resolve alerts without deleting evidence.
+
+### Verification
+
+Compiled updated files:
+
+```bash
+python -m py_compile analytics/alerts.py api/routers/alerts.py api/models_db.py api/database.py api/schemas.py api/main.py tests/test_alerts.py
+```
+
+Ran:
+
+```bash
+python -m pytest tests/test_alerts.py -v
+```
+
+Observed:
+
+- `4 passed`
+
+Covered cases:
+
+- Sustained-decline patient `U034` creates expected HIGH persistent alert(s)
+  with evidence.
+- A control user with one bad/noisy night creates no alert.
+- `POST /doctor/alerts/{id}/acknowledge` behavior flips status to
+  `ACKNOWLEDGED`.
+- Re-evaluating the same persisted alert is idempotent and does not duplicate an
+  existing OPEN alert.
+
+Attempted an in-process route smoke check with FastAPI `TestClient`, but it did
+not return promptly in this environment and was stopped. The router/model logic
+is covered by direct tests, and `api.main` imports successfully with the new
+router registered.
+
 ## Current Uncommitted Work
 
 The following work is currently present in the working tree on
@@ -686,6 +925,9 @@ The following work is currently present in the working tree on
 - Plain-Python academic sleep score module and tests.
 - Rule-based condition risk engine and risk-analysis tests.
 - Regenerated analytics Parquet with risk feature columns and `risk_flags_json`.
+- Expanded Spark longitudinal averages and trend deltas.
+- Metric-triggered recommendation engine and tests.
+- Persistence-based doctor alert engine, ORM model, router, and tests.
 - This progress report.
 
 ## Next Likely Step

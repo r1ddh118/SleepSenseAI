@@ -1,7 +1,7 @@
 """Pydantic v2 request/response models."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, EmailStr
 
@@ -113,3 +113,20 @@ class HealthOut(BaseModel):
     database: str
     redis: str
     version: str = "1.0.0"
+
+
+class DoctorAlertOut(BaseModel):
+    id: int
+    patient_id: str
+    doctor_id: Optional[int]
+    session_id: str
+    alert_type: str
+    severity: str
+    reason: str
+    evidence: dict[str, Any]
+    status: str
+    created_at: datetime
+    acknowledged_at: Optional[datetime]
+    resolved_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}

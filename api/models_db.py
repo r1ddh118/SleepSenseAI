@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM: User, Session, Prediction."""
+"""SQLAlchemy ORM: User, Session, Prediction, DoctorAlert."""
 
 from datetime import datetime
 
@@ -54,3 +54,22 @@ class Prediction(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     session = relationship("Session", back_populates="predictions")
+
+
+class DoctorAlert(Base):
+    __tablename__ = "doctor_alerts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(String, index=True, nullable=False)
+    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    session_id = Column(String, index=True, nullable=False)
+    alert_type = Column(String, nullable=False)
+    severity = Column(String, nullable=False)
+    reason = Column(Text, nullable=False)
+    evidence_json = Column(Text, nullable=False)
+    status = Column(String, default="OPEN", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    acknowledged_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+
+    doctor = relationship("User")

@@ -13,7 +13,7 @@ if str(API_DIR) not in sys.path:
     sys.path.insert(0, str(API_DIR))
 
 from database import init_db
-from routers import auth_router, frontend_adapter, health, models, predictions, sessions
+from routers import alerts, auth_router, frontend_adapter, health, models, predictions, sessions
 from ws_manager import ws_manager
 
 logging.basicConfig(level=logging.INFO)
@@ -55,6 +55,7 @@ app.include_router(predictions.router)
 app.include_router(models.router)
 app.include_router(health.router)
 app.include_router(frontend_adapter.router)
+app.include_router(alerts.router)
 
 
 @app.websocket("/ws/live/{sid}")
