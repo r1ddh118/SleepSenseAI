@@ -22,6 +22,7 @@ def nightly_metrics(df: DataFrame) -> DataFrame:
         F.max("heart_rate").alias("max_heart_rate"),
         F.stddev_samp("heart_rate").alias("stddev_heart_rate"),
         F.avg("movement_magnitude").alias("avg_movement_magnitude"),
+        F.stddev_samp("movement_magnitude").alias("stddev_movement_magnitude"),
         F.sum("event_count").alias("total_event_count"),
         F.avg("spo2").alias("avg_spo2"),
         F.min("spo2").alias("min_spo2"),
@@ -31,6 +32,9 @@ def nightly_metrics(df: DataFrame) -> DataFrame:
         F.max("stress_level").alias("stress_level"),
         F.max("nap_minutes").alias("nap_minutes"),
         F.max("awakenings").alias("awakenings"),
+        F.first("bed_time", ignorenulls=True).alias("bed_time"),
+        F.first("sleep_onset", ignorenulls=True).alias("sleep_onset"),
+        F.first("wake_time", ignorenulls=True).alias("wake_time"),
         *stage_count_exprs,
     )
 

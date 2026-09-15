@@ -320,6 +320,354 @@ Ran an additional invariant check:
 - Rows with `stage_pct_total` between `99.99` and `100.01`: `8,400`.
 - Rows with non-null rolling HR and movement means: `1,231,804`.
 
+## Step 5: Spark SQL, Parquet Output, And Pipeline Orchestrator
+
+### What Was Done
+
+- Added `spark/sleep_score.py`.
+  - Adds a Spark-native `sleep_score` from nightly metrics.
+  - Adds `sleep_category` values: `EXCELLENT`, `GOOD`, `FAIR`, `POOR`.
+- Added `spark/risk_analysis.py`.
+  - Adds non-diagnostic risk-screening features:
+    - `event_rate`
+    - `wake_fraction`
+    - `deep_sleep_fraction`
+    - `rem_fraction`
+    - `risk_score`
+    - `risk_level`
+- Added `spark/longitudinal.py`.
+  - Adds rolling 7-night, 14-night, and 30-night user-level trend metrics:
+    - sleep score average
+    - sleep efficiency average
+    - risk score average
+    - event rate average
+    - nights included in each rolling window
+- Added `spark/spark_sql.py`.
+  - Registers the nightly analytics DataFrame as `nightly_sleep`.
+  - Runs a representative Spark SQL query: average sleep score and risk score
+    per user, ordered by lowest average sleep score.
+- Added `spark/pipeline.py`.
+  - Orchestrates ingestion -> cleaning -> rolling features -> nightly metrics
+    -> sleep score -> risk features -> longitudinal metrics -> Parquet write.
+- Added `scripts/run_spark_pipeline.py`.
+  - CLI entry point for the Spark pipeline.
+- Updated `spark/sleep_analytics.py`.
+  - Added `stddev_movement_magnitude` to nightly metrics.
+- Produced the analytics table at:
+  - `data/parquet/`
+
+### Why It Was Done
+
+This turns the separate Spark functions into an executable analytics pipeline.
+The output is now a queryable Parquet table, which is the intended storage shape
+for high-volume analytics data. The relational database can later store summary
+rows and paths/references instead of raw observation-level Spark output.
+
+### How It Was Done
+
+- Kept orchestration in `spark/pipeline.py`.
+- Kept scoring, risk features, longitudinal windows, SQL helpers, and raw
+  nightly aggregation in separate modules.
+- Used Spark SQL temp views for representative analytical querying.
+- Wrote the final enriched nightly table with:
+
+```python
+analytics.write.mode("overwrite").parquet(output_path)
+```
+
+- Used local `file:///` path normalization from `spark.ingestion` so Spark reads
+  and writes repository paths locally instead of attempting HDFS resolution.
+
+### Verification
+
+Compiled the new modules:
+
+```bash
+python -m py_compile spark/sleep_score.py spark/risk_analysis.py spark/longitudinal.py spark/spark_sql.py spark/pipeline.py scripts/run_spark_pipeline.py
+```
+
+Ran the pipeline CLI:
+
+```bash
+python scripts/run_spark_pipeline.py
+```
+
+Observed SQL query sample:
+
+```text
++-------+---------------+--------------+------+
+|user_id|avg_sleep_score|avg_risk_score|nights|
++-------+---------------+--------------+------+
+|S004   |56.14          |41.97         |70    |
+|U0064  |60.94          |28.64         |70    |
+|U0061  |62.07          |27.9          |70    |
+|U0030  |67.82          |20.34         |70    |
+|U0096  |68.54          |18.5          |70    |
++-------+---------------+--------------+------+
+```
+
+Observed pipeline result:
+
+- Wrote nightly analytics Parquet to `data/parquet`.
+- Total nights: `8,400`.
+
+Read the Parquet output back with Spark:
+
+```bash
+python -c "
+from spark.spark_session import create_spark_session
+spark = create_spark_session()
+df = spark.read.parquet('data/parquet')
+df.printSchema()
+df.show(5)
+print('total nights:', df.count())
+spark.stop()
+"
+```
+
+Confirmed schema includes:
+
+- Sleep score columns:
+  - `sleep_score`
+  - `sleep_category`
+- Risk feature columns:
+  - `event_rate`
+  - `wake_fraction`
+  - `deep_sleep_fraction`
+  - `rem_fraction`
+  - `risk_score`
+  - `risk_level`
+- Longitudinal columns:
+  - `sleep_score_7d_avg`, `sleep_score_14d_avg`, `sleep_score_30d_avg`
+  - `sleep_efficiency_7d_avg`, `sleep_efficiency_14d_avg`, `sleep_efficiency_30d_avg`
+  - `risk_score_7d_avg`, `risk_score_14d_avg`, `risk_score_30d_avg`
+  - `event_rate_7d_avg`, `event_rate_14d_avg`, `event_rate_30d_avg`
+  - `nights_in_7d_window`, `nights_in_14d_window`, `nights_in_30d_window`
+
+Confirmed row count:
+
+- Total nights: `8,400`.
+
+## Step 6: Academic Sleep Score Rule
+
+### What Was Done
+
+- Added `analytics/sleep_score.py`.
+- Added `tests/test_sleep_score.py`.
+- Added `pytest` to `requirements.txt`.
+
+### Why It Was Done
+
+The Spark pipeline produces nightly metrics, but the application also needs a
+plain-Python business-rule layer that can explain user-facing scores without
+running another Spark job. This step adds a deterministic 0-100 sleep score that
+can be used by API/report code after Spark has already computed nightly
+aggregates.
+
+The score is explicitly labeled as academic analytics only. It is not clinically
+validated and must not be presented as a medical diagnosis.
+
+### How It Was Done
+
+The score uses the requested weights:
+
+- Efficiency: `25%`
+- Duration: `20%`
+- Deep sleep: `15%`
+- REM sleep: `15%`
+- Low wake fragmentation: `10%`
+- HR stability: `10%`
+- Movement stability: `5%`
+
+`calculate_sleep_score(metrics)` returns:
+
+- `score`
+- `category`
+- `score_type`
+- `clinically_validated`
+- `disclaimer`
+- `metrics`
+  - normalized inputs
+  - component scores
+  - component weights
+
+The response disclaimer is:
+
+```text
+Academic analytics score only; not clinically validated and not a medical diagnosis.
+```
+
+### Verification
+
+Compiled the module and tests:
+
+```bash
+python -m py_compile analytics/sleep_score.py tests/test_sleep_score.py
+```
+
+Ran the direct score check:
+
+```bash
+python -c "
+from analytics.sleep_score import calculate_sleep_score
+good = {'sleep_efficiency':0.92,'sleep_duration_hours':7.6,'n3_fraction':0.20,'rem_fraction':0.22,'wake_fraction':0.05,'hr_std':3.0,'movement_std':0.1}
+poor = {'sleep_efficiency':0.60,'sleep_duration_hours':5.0,'n3_fraction':0.05,'rem_fraction':0.08,'wake_fraction':0.30,'hr_std':10.0,'movement_std':0.5}
+print(calculate_sleep_score(good))
+print(calculate_sleep_score(poor))
+"
+```
+
+Observed results:
+
+- Good synthetic input: score `91.7`, category `EXCELLENT`.
+- Poor synthetic input: score `39.2`, category `POOR`.
+- Both responses include `clinically_validated: False` and the academic
+  analytics disclaimer.
+
+Attempted the requested pytest command:
+
+```bash
+pytest tests/test_sleep_score.py -v
+python -m pytest tests/test_sleep_score.py -v
+```
+
+Both could not run because `pytest` is not installed in the current environment.
+`pytest` has been added to `requirements.txt` so this check will run after
+dependencies are installed.
+
+## Step 7: Rule-Based Risk Screening
+
+### What Was Done
+
+- Added `analytics/condition_risk.py`.
+  - Implements a deterministic, non-diagnostic rule engine.
+  - Returns `risk_flags` with:
+    - `condition`
+    - `risk`
+    - `confidence`
+    - `reasons`
+    - academic/non-clinical disclaimer
+- Added `tests/test_risk_analysis.py`.
+  - Covers high wake fragmentation.
+  - Covers a good sleeper with no material risk flags.
+  - Covers elevated event/SpO2 breathing-pattern risk.
+  - Covers circadian irregularity from timing variability.
+- Updated `spark/risk_analysis.py`.
+  - Computes requested risk features per nightly session:
+    - `event_rate`
+    - `wake_fraction`
+    - `n3_fraction`
+    - `rem_fraction`
+    - `sleep_efficiency_fraction`
+    - `avg_hr`
+    - `hr_std`
+    - `movement_std`
+    - `bedtime_variability`
+    - `wake_time_variability`
+    - `duration_variability`
+    - `sleep_duration_hours`
+  - Preserves previous compatibility columns such as `deep_sleep_fraction`,
+    `risk_score`, and `risk_level`.
+  - Adds `risk_flags_json` to the Spark analytics output using the verified
+    plain-Python rule engine.
+- Updated `spark/sleep_analytics.py`.
+  - Carries nightly `bed_time`, `sleep_onset`, and `wake_time` through
+    aggregation so timing variability can be computed.
+- Re-ran `scripts/run_spark_pipeline.py`.
+  - Regenerated `data/parquet/` with the new risk feature columns and
+    `risk_flags_json`.
+
+### Why It Was Done
+
+The project needs explainable risk screening before any ML model. This follows
+the blueprint constraint: do not diagnose disease, and do not jump to Spark
+MLlib until rule-based behavior is verified and labeled data exists.
+
+The risk engine is explicitly labeled as academic screening only, not clinically
+validated, and not a medical diagnosis.
+
+### How It Was Done
+
+- Spark computes quantitative risk features from nightly metrics.
+- The Python rule engine maps those features to condition-like screening
+  categories:
+  - Sleep-disordered breathing pattern
+  - Insomnia-like pattern
+  - Circadian irregularity
+  - Sleep fragmentation
+  - Sleep architecture strain
+- Each flag includes confidence and human-readable reasons.
+- Spark stores the rule output per row as `risk_flags_json`.
+- Timing variability uses a 7-night rolling user window over normalized
+  bedtime, wake time, and derived sleep duration.
+
+### Verification
+
+Compiled updated files:
+
+```bash
+python -m py_compile analytics/condition_risk.py spark/risk_analysis.py spark/sleep_analytics.py tests/test_risk_analysis.py
+```
+
+Direct rule-engine check:
+
+- High-wake synthetic sleeper returned:
+  - `Insomnia-like pattern: HIGH`
+  - `Sleep fragmentation: HIGH`
+- Good synthetic sleeper returned:
+  - `[]`
+
+Test functions were invoked directly because `pytest` is still not installed in
+the current environment:
+
+```bash
+python -c "import importlib.util; spec=importlib.util.spec_from_file_location('risk_tests','tests/test_risk_analysis.py'); mod=importlib.util.module_from_spec(spec); spec.loader.exec_module(mod); mod.test_high_wake_fraction_flags_sleep_fragmentation(); mod.test_good_sleeper_has_no_material_risk_flags(); mod.test_breathing_pattern_uses_events_and_spo2_without_diagnosis(); mod.test_circadian_irregularity_uses_timing_variability(); print('risk analysis test functions passed')"
+```
+
+Observed:
+
+- `risk analysis test functions passed`
+
+Attempted the requested command:
+
+```bash
+python -m pytest tests/test_risk_analysis.py -v
+```
+
+It could not run because `pytest` is not installed in the current environment.
+`pytest` is already listed in `requirements.txt`.
+
+Pipeline verification:
+
+```bash
+python scripts/run_spark_pipeline.py
+```
+
+Observed:
+
+- Wrote nightly analytics Parquet to `data/parquet`.
+- Total nights: `8,400`.
+
+Manual synthetic user inspection:
+
+- Bad sleepers:
+  - `S004`: average score `56.14`, average risk `41.97`, flags included
+    `Sleep-disordered breathing pattern: HIGH` and `Sleep fragmentation: HIGH`.
+  - `U0064`: average score `60.94`, average risk `28.64`, flags included
+    breathing pattern, fragmentation, and insomnia-like pattern.
+  - `U0061`: average score `62.07`, average risk `27.90`, flags included
+    breathing pattern and fragmentation.
+- Good sleepers:
+  - `U0054`: average score `91.40`, average risk `4.15`, representative
+    `risk_flags_json` was `[]`.
+  - `U0015`: average score `91.07`, average risk `4.34`, representative row was
+    LOW overall with one moderate circadian timing variability flag.
+  - `U0109`: average score `90.88`, average risk `4.27`, representative
+    `risk_flags_json` was `[]`.
+
+Confirmed the Parquet schema includes all requested risk feature columns and
+`risk_flags_json`.
+
 ## Current Uncommitted Work
 
 The following work is currently present in the working tree on
@@ -332,17 +680,23 @@ The following work is currently present in the working tree on
 - Generated synthetic CSV.
 - Spark session, schema, ingestion, cleaning, rolling feature, and nightly
   analytics modules.
+- Spark SQL helper, sleep score transform, risk feature transform, longitudinal
+  transform, pipeline orchestrator, and pipeline CLI.
+- Generated analytics Parquet table under `data/parquet/`.
+- Plain-Python academic sleep score module and tests.
+- Rule-based condition risk engine and risk-analysis tests.
+- Regenerated analytics Parquet with risk feature columns and `risk_flags_json`.
 - This progress report.
 
 ## Next Likely Step
 
-Build the Spark pipeline orchestration and storage layer:
+Build the plain-Python analytics/reporting layer and persistence bridge:
 
-- `spark/pipeline.py`
-- write cleaned/processed Parquet under `data/processed/`
-- write nightly analytics Parquet under `data/parquet/`
-- add a script such as `scripts/run_spark_pipeline.py`
-- add focused tests for cleaning, rolling windows, and nightly metrics
+- `analytics/condition_risk.py`
+- `analytics/alerts.py`
+- `analytics/recommendations.py`
+- `analytics/report_builder.py`
+- API/Celery task updates to call `spark/pipeline.py` and store summary rows.
 
-This will turn the individual Spark functions into a repeatable batch/per-session
-pipeline.
+This will connect the Spark-computed table to non-diagnostic business rules,
+persistence-based alerts, and user/doctor-facing artifacts.

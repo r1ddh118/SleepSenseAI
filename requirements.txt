@@ -15,3 +15,4 @@ SQLAlchemy
 passlib
 python-jose
 pyspark
+pytest
