@@ -181,13 +181,14 @@ def _build_patient_report(db: DBSession, patient_id: str) -> dict[str, Any]:
     rows = (
         db.query(ManualSleepSession, SessionModel, SleepAnalytics)
         .join(SessionModel, ManualSleepSession.session_id == SessionModel.id)
-        .outerjoin(SleepAnalytics, SleepAnalytics.session_id == SessionModel.id)
+        .join(SleepAnalytics, SleepAnalytics.session_id == SessionModel.id)
         .filter(ManualSleepSession.patient_uid == patient_id)
+        .filter(SleepAnalytics.status == "COMPLETED")
         .order_by(ManualSleepSession.date.asc(), SessionModel.id.asc())
         .all()
     )
     if not rows:
-        raise HTTPException(404, f"Patient '{patient_id}' has no manual sleep sessions")
+        raise HTTPException(404, f"Patient '{patient_id}' has no completed manual sleep analytics")
 
     nightly_history = []
     recommendations: list[dict[str, Any]] = []

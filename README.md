@@ -1,194 +1,315 @@
 # SleepSense AI
 
-SleepSense AI is a multimodal sleep analysis stack: an **OOP Python CLI pipeline** in `src/`, a **FastAPI + Celery backend** in `api/` (Phase 2 + SHAP hooks), and scaffold folders for optional legacy hardware, frontend, validation, packaging, and advanced work.
+SleepSense AI is now a PySpark-backed sleep analytics stack. The primary flow is:
 
-## Target layout
-
-```
-sleepsense-ai/
-├── src/                 # Phase 0 — CLI pipeline (do not restructure)
-├── hardware/            # Optional legacy RPi / E4 acquisition helpers
-├── api/                 # Phase 2 — FastAPI, Celery, WebSocket API
-├── frontend/            # Phase 3 — React dashboard (scaffold)
-├── validation/          # Phase 4 — DREAMT / Wearanize, metrics, IRB, regulatory
-├── packaging/           # Phase 5 — RPi systemd, prod compose, nginx
-├── advanced/            # Phase 6 — SHAP CLI, recommendations, FL stub, LSTM
-├── datasets/            # raw data (large files gitignored as needed)
-├── artifacts/           # models, CSV outputs (gitignored)
-├── docker-compose.yml   # dev: Redis + API + worker
-└── .env.example
+```text
+Manual sleep input -> FastAPI -> SQLite DB -> Celery -> PySpark -> analytics/risk/recommendations -> alerts/report/dashboard
 ```
 
-## Phase 0 — CLI pipeline
+The old hardware/MQTT path is treated as optional legacy support. The main app does not require ESP32, MQTT, HiveMQ, or live sensors.
 
-Entrypoint: `src/main.py` (`preprocess`, `eda`, `train`, `predict`). See **CLI Workflow** below for commands.
+## Current Architecture
 
-## Phase 2 — Backend (FastAPI)
+| Area | Path | Purpose |
+| --- | --- | --- |
+| API | `api/` | FastAPI routes, SQLAlchemy models, Celery tasks |
+| Spark | `spark/` | Session, schema, ingestion, cleaning, rolling features, nightly metrics, score/risk/longitudinal transforms |
+| Analytics | `analytics/` | Academic sleep score, condition-risk rules, recommendations, persistence alerts, report builder |
+| Frontend | `frontend/` | React/Vite patient and doctor UI |
+| Synthetic data | `scripts/generate_synthetic_sleep.py` | Generates large longitudinal sleep observation CSV |
+| Pipeline CLI | `scripts/run_spark_pipeline.py` | Runs Spark CSV to Parquet analytics pipeline |
+| Legacy hardware deps | `requirements-hardware.txt` | Optional hardware/MQTT dependencies only |
+| Migration notes | `MIGRATION_PROGRESS.md` | Living implementation and verification report |
 
-Stack: FastAPI, SQLAlchemy (SQLite or Postgres), Celery + Redis, WebSocket, JWT auth.
-## Unified app launcher (single terminal)
+## Disclaimer
 
-If your local stack feels broken because API, worker, Redis, and frontend need separate terminals, use the root `app.py` launcher. It starts the services together and shuts them down together.
+SleepSense AI analytics are academic/product analytics only. They are not clinically validated, are not a medical diagnosis, and must not be used to diagnose or rule out any medical condition.
 
-```bash
-# from repo root
-python app.py
-```
+## Install
 
-What it starts by default:
-- Redis (`redis-server`)
-- Celery worker (`celery -A tasks worker --loglevel=info`)
-- FastAPI (`uvicorn main:app --reload --port 8000`)
-- Frontend Vite dev server (`npm run dev -- --host`)
-
-Useful flags:
-
-```bash
-python app.py --no-frontend      # run backend only
-python app.py --no-redis         # disable redis (if you provide an external redis)
-python app.py --api-port 8080    # change API port
-```
-
-Press `Ctrl+C` once to stop all services cleanly.
-
-
-The API **imports the existing `src/` pipeline** inside Celery workers via `src/main.py` (`SleepSenseApp`) so preprocessing/training logic is not duplicated.
-
-### Run without Docker
-
-Recommended (single terminal):
-
-```bash
-python app.py
-```
-
-Manual multi-terminal option (legacy):
-
-```bash
-# Terminal 1
-redis-server
-
-# Terminal 2
-cd api
-pip install -r requirements_api.txt
-celery -A tasks worker --loglevel=info
-
-# Terminal 3
-cd api
-uvicorn main:app --reload --port 8000
-
-# Terminal 4
-cd frontend && npm install && npm run dev -- --host
-```
-
-Open [http://localhost:8000/docs](http://localhost:8000/docs) for backend and [http://localhost:5173](http://localhost:5173) for frontend.
-
-Copy `.env.example` to `.env` at the repo root and adjust variables as needed.
-
-### Run with Docker
-
-```bash
-docker compose up --build
-```
-
-API and worker share a named volume for SQLite at `/app/db/sleepsense.db`. Mount `./datasets` and `./artifacts` for data and models.
-
-### Main routes
-
-| Method | Route | Auth | Description |
-|--------|--------|------|-------------|
-| POST | `/api/v1/auth/register` | — | Create user |
-| POST | `/api/v1/auth/login` | — | JWT |
-| POST | `/api/v1/sessions/` | User | Create session |
-| GET | `/api/v1/sessions/` | User | List sessions |
-| GET | `/api/v1/sessions/{sid}` | User | Get session |
-| PATCH | `/api/v1/sessions/{sid}` | User | Update session |
-| POST | `/api/v1/sessions/{sid}/complete` | — | Mark complete |
-| POST | `/api/v1/sessions/{sid}/predict` | User | Queue prediction |
-| GET | `/api/v1/sessions/{sid}/predictions` | User | List results |
-| GET | `/api/v1/sessions/{sid}/report` | User | Download CSV |
-| GET | `/api/v1/tasks/{task_id}` | User | Poll Celery task |
-| GET | `/api/v1/models/leaderboard` | Clinician | Leaderboard JSON |
-| POST | `/api/v1/models/train` | Clinician | Queue training |
-| GET | `/api/v1/models/clinical-metrics` | Clinician | Rows from `validation/clinical_metrics_report.csv` |
-| GET | `/api/v1/sessions/{sid}/trend` | User | Last ≤7 nights with predictions (same user) |
-| GET | `/api/v1/health` | — | Health |
-| WS | `/ws/live/{sid}` | — | WebSocket channel for live clients |
-
-Prediction task results and stored rows can include `shap_top_features` (tree models) and `recommendations` (rule-based, from `advanced/recommendations.py`).
-
-## Phase 4 — Clinical validation
-
-1. **DREAMT (PhysioNet, credentialed)** — download the v2.1.0 extract locally, then convert + run the same CLI pipeline:
-
-   ```bash
-   pip install -r validation/requirements_validation.txt
-   export PHYSIONET_USER=... PHYSIONET_PASS=...   # optional for wget/HTTP helpers
-   python validation/dreamt_pipeline.py --dreamt-root /path/to/dreamt/2.1.0 --out datasets/dreamt/ --batch-predictions
-   ```
-
-   This writes SleepSense-style `compressed_<SID>_whole_df.csv`, `participant_info.csv`, and `psg_labels.csv` under `--out`, runs `preprocess` → `eda` → `train`, and (with `--batch-predictions`) writes `artifacts/dreamt_batch_predictions.csv` for metrics.
-
-2. **Wearanize+** — place `compressed_*_whole_df.csv` + `participant_info.csv` under `datasets/wearanize/` (or pass `--dataset-dir`), then:
-
-   ```bash
-   python validation/wearanize_pipeline.py --dataset-dir datasets/wearanize/
-   ```
-
-3. **Clinical metrics** (sensitivity, specificity, PPV, NPV, AUC, kappa, bootstrap CIs):
-
-   ```bash
-   python validation/metrics_report.py \
-     --predictions artifacts/dreamt_batch_predictions.csv \
-     --ground-truth datasets/dreamt/psg_labels.csv \
-     --output validation/clinical_metrics_report.csv
-   ```
-
-   **Local smoke test** (pilot data only, not peer review): after `preprocess` + `train`, batch-predict from `artifacts/preprocessed_training_data.csv`, build a ground-truth CSV with columns `SID` and `sleep_deprivation_label_gt`, then run `metrics_report.py` as above.
-
-4. **IRB / regulatory** — see `validation/irb_checklist.md` and `validation/regulatory_notes.md`.
-
-## Phase 5 — Packaging
-
-- **Raspberry Pi**: `sudo bash packaging/rpi_setup.sh` (expects repo already cloned at `SLEEPSENSE_HOME` or `/home/pi/sleepsense-ai`; installs venv deps, systemd units `sleepsense-api`, `sleepsense-worker`, `sleepsense-recorder`).
-- **Cloud / VPS**: from repo root, set `POSTGRES_PASSWORD` and `SECRET_KEY` in `.env`, build frontend to `frontend/dist`, then:
-
-  ```bash
-  docker compose -f packaging/docker-compose.prod.yml --env-file .env up --build
-  ```
-
-  Nginx proxies `/api/`, `/docs`, `/openapi.json`, and `/ws/` to the API container; static files from `frontend/dist`.
-
-
-## Optional Legacy Hardware
-
-Hardware/MQTT helpers are not required for the primary API, Celery, or analytics workflow. If you need the old hardware scripts, install their optional dependencies separately:
-
-```bash
-pip install -r requirements-hardware.txt
-```
-
-## Phase 6 — Advanced
-
-```bash
-pip install -r advanced/requirements_advanced.txt
-python advanced/explainability.py --model artifacts/best_model.pkl --data artifacts/preprocessed_inference_S002.csv --out artifacts/shap/
-python advanced/federated_client.py --features artifacts/preprocessed_inference_S002.csv
-python advanced/longitudinal_model.py --features artifacts/all_nights_features.csv --out artifacts/
-```
-
-`advanced/recommendations.py` is invoked automatically from the Celery prediction task when possible.
-
-## Installation (CLI only)
+Backend:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -U pip
 pip install -r requirements.txt
+pip install -r api/requirements_api.txt
 ```
 
-## CLI workflow
+Frontend:
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+Optional hardware only:
+
+```bash
+pip install -r requirements-hardware.txt
+```
+
+## Generate Data And Run Spark Pipeline
+
+Generate longitudinal synthetic observations:
+
+```bash
+python scripts/generate_synthetic_sleep.py
+```
+
+Expected output:
+
+- `data/synthetic/sleep_observations.csv`
+- about `1.2M+` observation rows
+
+Run the Spark analytics pipeline:
+
+```bash
+python scripts/run_spark_pipeline.py
+```
+
+Expected output:
+
+- `data/parquet/`
+- about `8,400` nightly rows for the default synthetic dataset
+
+Inspect Parquet:
+
+```bash
+python -c "
+from spark.spark_session import create_spark_session
+spark = create_spark_session()
+df = spark.read.parquet('data/parquet')
+df.printSchema()
+df.show(5)
+print('total nights:', df.count())
+spark.stop()
+"
+```
+
+## Run The Live App
+
+Use four terminals.
+
+### Terminal 1: Redis
+
+```bash
+redis-server --daemonize yes
+redis-cli ping
+```
+
+Expected:
+
+```text
+PONG
+```
+
+### Terminal 2: Celery Worker
+
+```bash
+PYTHONPATH=api:. celery -A api.celery_app worker --loglevel=info --concurrency=1
+```
+
+Watch this terminal during manual-session tests. Spark starts inside the Celery task, so Java/JVM errors appear here.
+
+### Terminal 3: FastAPI
+
+Port `8000` may already be occupied on some machines. Use `8010` for the current local workflow:
+
+```bash
+uvicorn api.main:app --reload --port 8010
+```
+
+Check:
+
+```bash
+curl -s http://localhost:8010/docs -o /dev/null -w "%{http_code}\n"
+curl -s http://localhost:8010/api/v1/doctor/alerts -o /dev/null -w "%{http_code}\n"
+```
+
+Expected:
+
+```text
+200
+200
+```
+
+### Terminal 4: Frontend
+
+```bash
+cd frontend
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+Open:
+
+```text
+http://localhost:5173
+```
+
+The Vite dev server proxies `/api` and `/ws` to `http://localhost:8010`.
+
+## Frontend Smoke Test
+
+1. Open `http://localhost:5173/record-sleep`.
+2. Submit a manual sleep row, for example `user_id=U034`, date `2026-09-10`, screen time `150`, stress `7`.
+3. Confirm the UI returns quickly with `PROCESSING`.
+4. Watch the Celery terminal for `tasks.run_sleep_analytics` and Spark stages.
+5. Wait for the UI polling to show `COMPLETED`.
+6. Open `http://localhost:5173/dashboard`.
+7. Confirm the new session appears with sleep score, risk, stages, and recommendations.
+8. Open `http://localhost:5173/doctor`.
+9. After several poor nights, confirm doctor alerts/report data appears.
+
+If browser requests to `/api/...` return `404` from `localhost:5173`, restart Vite and confirm `frontend/vite.config.ts` includes the proxy to `localhost:8010`.
+
+## Manual API Smoke Test
+
+Submit one session:
+
+```bash
+curl -s -X POST http://localhost:8010/api/v1/sessions/manual \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"U034","date":"2026-09-10","sleep_efficiency":0.82,"n3_fraction":0.12,"rem_fraction":0.18,"wake_fraction":0.14,"screen_time":150,"stress_level":7}'
+```
+
+Expected:
+
+```json
+{"session_id":"...","id":"...","status":"PROCESSING"}
+```
+
+Poll:
+
+```bash
+curl -s http://localhost:8010/api/v1/sessions/<session_id>/analytics
+```
+
+Expected first:
+
+```json
+{"status":"PROCESSING"}
+```
+
+Expected later:
+
+```json
+{"status":"COMPLETED","sleep_score":...,"risk_level":"...","recommendations":[...]}
+```
+
+## Doctor Alert Demo
+
+Submit worsening nights for `U034` through the UI or API. A known live smoke produced these completed scores:
+
+| Date | Score | Risk |
+| --- | ---: | --- |
+| 2026-09-10 | 89.6 | LOW |
+| 2026-09-11 | 88.0 | LOW |
+| 2026-09-12 | 73.4 | LOW |
+| 2026-09-13 | 54.8 | MODERATE |
+| 2026-09-14 | 38.2 | HIGH |
+| 2026-09-15 | 25.8 | HIGH |
+| 2026-09-16 | 15.0 | HIGH |
+| 2026-09-17 | 10.3 | HIGH |
+| 2026-09-18 | 7.8 | HIGH |
+| 2026-09-19 | 5.1 | HIGH |
+
+Check alerts:
+
+```bash
+curl -s http://localhost:8010/api/v1/doctor/alerts
+```
+
+Expected alert types can include:
+
+- `persistent_low_sleep_score`
+- `persistent_high_risk`
+- `sustained_elevated_event_rate`
+
+Check patient report:
+
+```bash
+curl -s http://localhost:8010/api/v1/doctor/patients/U034/report
+```
+
+Expected:
+
+- completed nightly history only;
+- alert evidence;
+- recommendations;
+- model info;
+- medical disclaimer.
+
+## Main Routes
+
+| Method | Route | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/sessions/manual` | Save manual sleep input, enqueue Celery Spark analytics |
+| `GET` | `/api/v1/sessions/{sid}/analytics` | Poll analytics status/result |
+| `GET` | `/api/v1/doctor/alerts` | List doctor alerts |
+| `POST` | `/api/v1/doctor/alerts/{id}/acknowledge` | Acknowledge alert |
+| `POST` | `/api/v1/doctor/alerts/{id}/resolve` | Resolve alert |
+| `GET` | `/api/v1/sessions/{sid}/report?format=json\|csv\|html` | Session report |
+| `GET` | `/api/v1/doctor/patients/{patient_id}/report` | Patient-level report |
+| `GET` | `/api/v1/frontend/dashboard` | Dashboard adapter payload |
+| `GET` | `/api/v1/frontend/sessions/{sid}` | Frontend session detail payload |
+| `GET` | `/api/v1/health` | Health check |
+| `GET` | `/docs` | OpenAPI docs |
+
+## Tests
+
+Focused integration/regression suite:
+
+```bash
+pytest tests/test_manual_sessions.py tests/test_alerts.py tests/test_report_builder.py tests/test_full_integration.py -v
+```
+
+Other focused suites:
+
+```bash
+pytest tests/test_sleep_score.py -v
+pytest tests/test_risk_analysis.py -v
+pytest tests/ -k recommendations -v
+```
+
+Compile check:
+
+```bash
+python -m py_compile api/celery_app.py api/routers/reports.py api/tasks.py
+```
+
+## Generated Files And Cleanup
+
+Removed during cleanup:
+
+- Python `__pycache__/` folders
+- `.pytest_cache/`
+- `frontend/dist/`
+- `dump.rdb`
+
+Safe-to-delete generated/runtime artifacts:
+
+- `__pycache__/`
+- `.pytest_cache/`
+- `frontend/dist/`
+- `dump.rdb`
+- `data/raw/manual/`
+
+Ignored generated analytics outputs:
+
+- `data/synthetic/`
+- `data/parquet/`
+- `artifacts/`
+- `sleepsense.db`
+- `frontend/node_modules/`
+
+`frontend/node_modules/` is not source-controlled, but it is useful while testing the frontend. Delete it only if you are okay running `npm install` again.
+
+## Legacy CLI
+
+The older scikit-learn CLI path still exists under `src/` for reference and compatibility:
 
 ```bash
 python -m src.main preprocess
@@ -199,45 +320,4 @@ python -m src.main predict \
   --sid S002
 ```
 
-### Preprocess
-
-```bash
-python -m src.main preprocess \
-  --dataset-dir datasets \
-  --participant-csv datasets/participant_info.csv \
-  --outdir artifacts
-```
-
-### Predict
-
-```bash
-python -m src.main predict \
-  --dataset-dir datasets \
-  --participant-csv datasets/participant_info.csv \
-  --model-pickle artifacts/best_model.pkl \
-  --sensor-csv datasets/compressed_S002_whole_df.csv \
-  --sid S002 \
-  --output-csv artifacts/predictions.csv
-```
-
-## Dataset inputs
-
-- `datasets/participant_info.csv` — participant metadata and clinical fields.
-- `datasets/compressed_*_whole_df.csv` — per-participant sensor CSVs; filename must contain a SID like `S002`.
-
-## Models compared (training)
-
-Eight models: logistic regression, random forest, extra trees, AdaBoost, SVC, KNN, MLP, TensorFlow ANN.
-
-## Notes on labels
-
-`sleep_deprivation_label` is built heuristically from clinical fields; tiny datasets may use a severity fallback so training still runs. This is for development, not validated clinical deployment.
-
-## Phase index (spec documents)
-
-Implement details from your phase markdowns: `PHASE_1_HARDWARE.md` … `PHASE_6_ADVANCED_FEATURES.md` (not bundled in this repo unless you add them).
-
-## Common issues
-
-- **`Need at least two target classes`** — inspect `artifacts/preprocessed_training_data.csv` and EDA outputs.
-- **TensorFlow / CUDA messages** — often informational; CPU training works.
+The active migration path is the Spark/Celery/manual-entry workflow described above.

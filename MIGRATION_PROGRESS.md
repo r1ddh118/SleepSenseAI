@@ -1238,11 +1238,154 @@ Observed startup:
 Application startup complete.
 ```
 
-Remaining live check:
+## Step 14: Live Redis + Celery + Uvicorn Smoke Test
 
-- Start Redis/Celery, submit a manual session, poll
-  `GET /api/v1/sessions/{id}/analytics`, inspect `/api/v1/doctor/alerts`, open
-  the session report, and load the dashboard.
+### What Was Done
+
+- Started Redis locally and confirmed broker connectivity:
+
+```bash
+redis-cli ping
+```
+
+Observed:
+
+- `PONG`
+
+- Started the Celery worker against the real task module:
+
+```bash
+PYTHONPATH=api:. celery -A tasks worker --loglevel=info --concurrency=1
+```
+
+Observed:
+
+- worker connected to `redis://localhost:6379/0`;
+- task registry included `tasks.run_sleep_analytics`;
+- Spark session creation happened inside the worker with no Java/JVM traceback.
+
+- Added `api/celery_app.py` so this equivalent command also has a valid target:
+
+```bash
+celery -A api.celery_app worker --loglevel=info
+```
+
+- Started FastAPI on port `8010`.
+- Confirmed basic routes:
+
+```bash
+curl -s http://localhost:8010/docs -o /dev/null -w "%{http_code}\n"
+curl -s http://localhost:8010/api/v1/doctor/alerts -o /dev/null -w "%{http_code}\n"
+```
+
+Observed:
+
+- both returned `200`.
+
+### One-Session Round Trip
+
+Submitted:
+
+```bash
+curl -s -X POST http://localhost:8010/api/v1/sessions/manual \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"U034","date":"2026-09-10","sleep_efficiency":0.82,"n3_fraction":0.12,"rem_fraction":0.18,"wake_fraction":0.14,"screen_time":150,"stress_level":7}'
+```
+
+Observed:
+
+```json
+{"session_id":"10","id":"10","status":"PROCESSING"}
+```
+
+First analytics poll returned `PROCESSING`. The Celery worker then completed
+the Spark-backed task:
+
+```text
+Manual Spark analytics complete
+Task tasks.run_sleep_analytics[...] succeeded ... {'session_id': 10, 'status': 'COMPLETED', 'sleep_score': 89.6, 'alerts_created': 0}
+```
+
+Later analytics poll returned `COMPLETED` with:
+
+- `sleep_score: 89.6`
+- `sleep_category: EXCELLENT`
+- `risk_level: LOW`
+- metric-triggered recommendations for screen time and stress.
+
+### U034 Declining Demo
+
+Submitted a sequence of worsening nights for `U034`. The completed live scores
+were:
+
+| Date | Score | Risk |
+| --- | ---: | --- |
+| 2026-09-10 | 89.6 | LOW |
+| 2026-09-11 | 88.0 | LOW |
+| 2026-09-12 | 73.4 | LOW |
+| 2026-09-13 | 54.8 | MODERATE |
+| 2026-09-14 | 38.2 | HIGH |
+| 2026-09-15 | 25.8 | HIGH |
+| 2026-09-16 | 15.0 | HIGH |
+| 2026-09-17 | 10.3 | HIGH |
+| 2026-09-18 | 7.8 | HIGH |
+| 2026-09-19 | 5.1 | HIGH |
+
+Doctor alerts endpoint:
+
+```bash
+curl -s http://localhost:8010/api/v1/doctor/alerts
+```
+
+Observed three `OPEN`, `HIGH` alerts because three persistence rules were
+satisfied:
+
+- `persistent_low_sleep_score`
+  - evidence: `sleep_score < 50 for >=5 of last 7 nights`
+- `persistent_high_risk`
+  - evidence: `risk_level == HIGH for >=3 consecutive nights`
+- `sustained_elevated_event_rate`
+  - evidence: elevated event rate for consecutive/recent nights
+
+Patient report endpoint:
+
+```bash
+curl -s http://localhost:8010/api/v1/doctor/patients/U034/report
+```
+
+Observed:
+
+- `night_count: 10`
+- completed nightly history only;
+- all completed scores and risk levels listed;
+- `open_alert_count: 3`;
+- medical disclaimer present verbatim:
+
+```text
+SleepSense AI reports are academic analytics summaries only; they are not clinically validated, are not a medical diagnosis, and must not be used to diagnose or rule out any medical condition.
+```
+
+### Fixes From The Live Run
+
+- The previous `404` on `localhost:8000` was from another process already
+  bound to port `8000`; the new app had exited with `Address already in use`.
+  Port `8010` was used for the live smoke test.
+- Patient-level reports now include only `SleepAnalytics(status="COMPLETED")`
+  rows, so stale `PROCESSING` rows from interrupted attempts do not pollute the
+  doctor report.
+- Manual session responses include both `session_id` and `id` for compatibility
+  with shell snippets that use `jq -r .id`.
+
+### Verification After Fixes
+
+```bash
+python -m py_compile api/celery_app.py api/routers/reports.py
+pytest tests/test_report_builder.py tests/test_full_integration.py -v
+```
+
+Observed:
+
+- `4 passed`
 
 ## Current Status
 
@@ -1262,6 +1405,12 @@ The PySpark migration now has the main functional pieces in place:
 
 ## Next Likely Step
 
-Run a live service smoke test with Redis, Celery, Uvicorn, and JVM-backed Spark,
-then fix any environment-specific issues in the worker startup or dashboard API
-shape.
+Decide the doctor-alert product policy:
+
+- keep all simultaneous persistence alerts, as implemented now; or
+- collapse multiple alerts for the same patient/window into one strongest
+  doctor-facing alert.
+
+The live smoke currently proves the full stack works, and it also shows why this
+UI/product choice matters: one severe sustained decline can satisfy several
+rules at once.

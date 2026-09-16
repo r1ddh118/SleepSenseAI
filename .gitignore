@@ -43,6 +43,7 @@ data/raw/manual/
 # Local DB / secrets
 sleepsense.db
 *.db
+dump.rdb
 
 # Node (Phase 3)
 node_modules/
