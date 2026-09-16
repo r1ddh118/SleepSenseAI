@@ -38,5 +38,23 @@ services:
       - redis
     command: celery -A tasks worker --loglevel=info
 
+  # The current React UI is served by Vite in development.  It proxies API and
+  # WebSocket calls to the API container, so Redis/Celery do not change which
+  # frontend is shown in the browser.
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_TARGET=http://api:8000
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      - api
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+
 volumes:
   sleepsense_sqlite:
+  frontend_node_modules:

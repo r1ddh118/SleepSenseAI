@@ -22,7 +22,7 @@ The intended architecture is:
   longitudinal analytics.
 - Plain Python analytics modules turn Spark-computed aggregates into scores,
   risk levels, recommendations, reports, and persistence-based alerts.
-- Hardware/MQTT/ESP32 code is optional legacy code, not part of the primary run
+- Hardware/MQTT/ESP3s2 code is optional legacy code, not part of the primary run
   path.
 
 ## Step 1: Repository Inventory And Migration Checklist

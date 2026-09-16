@@ -71,9 +71,15 @@ class Launcher:
         if shutil.which(name) is None:
             raise RuntimeError(f"Required executable '{name}' not found. {help_text}")
 
-    def _add(self, name: str, command: list[str], cwd: Path | None = None) -> None:
+    def _add(
+        self,
+        name: str,
+        command: list[str],
+        cwd: Path | None = None,
+        env: dict[str, str] | None = None,
+    ) -> None:
         self.procs.append(
-            ManagedProcess(name=name, command=command, cwd=cwd or ROOT, env=self._env())
+            ManagedProcess(name=name, command=command, cwd=cwd or ROOT, env=env or self._env())
         )
 
     def _port_is_available(self, host: str, port: int) -> bool:
@@ -138,7 +144,17 @@ class Launcher:
                 npm_bin,
                 "Install Node.js + npm or launch with --no-frontend.",
             )
-            self._add("frontend", [npm_bin, "run", "dev", "--", "--host"], cwd=ROOT / "frontend")
+            frontend_env = self._env()
+            # Keep Vite's proxy aligned with a custom --api-port as well as the
+            # default Uvicorn port.  127.0.0.1 is required when Uvicorn binds
+            # to 0.0.0.0.
+            frontend_env["VITE_API_TARGET"] = f"http://127.0.0.1:{self.args.api_port}"
+            self._add(
+                "frontend",
+                [npm_bin, "run", "dev", "--", "--host"],
+                cwd=ROOT / "frontend",
+                env=frontend_env,
+            )
 
     def start(self) -> int:
         self.build()

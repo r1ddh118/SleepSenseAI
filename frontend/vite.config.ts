@@ -3,6 +3,7 @@ import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
+const apiTarget = process.env.VITE_API_TARGET ?? 'http://localhost:8000'
 
 function figmaAssetResolver() {
   return {
@@ -33,9 +34,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8010',
+      '/api': apiTarget,
       '/ws': {
-        target: 'ws://localhost:8010',
+        target: apiTarget,
         ws: true,
       },
     },
