@@ -5,9 +5,12 @@ from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
+from kombu.exceptions import OperationalError as KombuOperationalError
+import redis as redis_lib
 from sqlalchemy.orm import Session as DBSession
 
 from auth import get_current_user
+from config import settings
 from database import get_db
 from models_db import ManualSleepSession, SleepAnalytics
 from models_db import Session as SessionModel
@@ -33,9 +36,30 @@ def _int_or_none(value):
     return int(float(value))
 
 
+def _ensure_celery_broker_available() -> None:
+    """Fail fast when the async analytics queue is unavailable.
+
+    A manual session is only useful when its Celery job can be enqueued. Checking
+    Redis before writing the session avoids leaving a misleading PROCESSING row
+    behind when a developer has started Uvicorn without Redis.
+    """
+    try:
+        redis_lib.from_url(
+            settings.redis_url,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+        ).ping()
+    except redis_lib.RedisError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Analytics queue is unavailable. Start Redis, then start the Celery worker and retry.",
+        ) from exc
+
+
 @router.post("/manual", response_model=ManualSleepSessionAccepted)
 def create_manual_session(body: ManualSleepSessionCreate, db: DBSession = Depends(get_db)):
     """Save manual sleep input and enqueue Spark analytics; no Spark runs inline."""
+    _ensure_celery_broker_available()
     sid = f"{body.user_id}_{body.date}_{uuid4().hex[:8]}"
     session = SessionModel(
         sid=sid,
@@ -78,7 +102,21 @@ def create_manual_session(body: ManualSleepSessionCreate, db: DBSession = Depend
 
     from tasks import run_sleep_analytics
 
-    task = run_sleep_analytics.delay(session.id)
+    try:
+        task = run_sleep_analytics.delay(session.id)
+    except KombuOperationalError as exc:
+        # Redis may go down between the health check and task publication.
+        session.status = "FAILED"
+        analytics = db.query(SleepAnalytics).filter(SleepAnalytics.session_id == session.id).first()
+        if analytics:
+            analytics.status = "FAILED"
+            analytics.error = "Analytics queue was unavailable before the job could be started."
+        db.commit()
+        raise HTTPException(
+            status_code=503,
+            detail="Analytics queue is unavailable. Start Redis, then start the Celery worker and retry.",
+        ) from exc
+
     analytics = db.query(SleepAnalytics).filter(SleepAnalytics.session_id == session.id).first()
     if analytics:
         analytics.spark_job_id = task.id

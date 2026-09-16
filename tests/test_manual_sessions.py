@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -40,6 +42,7 @@ def test_manual_session_saves_raw_row_and_returns_processing(monkeypatch):
     import tasks
 
     _FakeTask.calls = []
+    monkeypatch.setattr(sessions, "_ensure_celery_broker_available", lambda: None)
     monkeypatch.setattr(tasks, "run_sleep_analytics", _FakeTask)
     db = _db()
     try:
@@ -71,6 +74,7 @@ def test_get_session_analytics_returns_processing_payload(monkeypatch):
     import tasks
 
     _FakeTask.calls = []
+    monkeypatch.setattr(sessions, "_ensure_celery_broker_available", lambda: None)
     monkeypatch.setattr(tasks, "run_sleep_analytics", _FakeTask)
     db = _db()
     try:
@@ -84,5 +88,26 @@ def test_get_session_analytics_returns_processing_payload(monkeypatch):
         assert payload["session_id"] == response.session_id
         assert payload["status"] == "PROCESSING"
         assert payload["sleep_score"] is None
+    finally:
+        db.close()
+
+
+def test_manual_session_returns_503_without_redis_and_does_not_save_rows(monkeypatch):
+    def broker_unavailable():
+        raise HTTPException(status_code=503, detail="Analytics queue is unavailable")
+
+    monkeypatch.setattr(sessions, "_ensure_celery_broker_available", broker_unavailable)
+    db = _db()
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            sessions.create_manual_session(
+                ManualSleepSessionCreate(user_id="U034", date="2026-09-10"),
+                db,
+            )
+
+        assert exc_info.value.status_code == 503
+        assert db.query(SessionModel).count() == 0
+        assert db.query(ManualSleepSession).count() == 0
+        assert db.query(SleepAnalytics).count() == 0
     finally:
         db.close()
