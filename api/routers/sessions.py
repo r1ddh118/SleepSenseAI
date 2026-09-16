@@ -83,7 +83,7 @@ def create_manual_session(body: ManualSleepSessionCreate, db: DBSession = Depend
     if analytics:
         analytics.spark_job_id = task.id
         db.commit()
-    return ManualSleepSessionAccepted(session_id=str(session.id))
+    return ManualSleepSessionAccepted(session_id=str(session.id), id=str(session.id))
 
 
 @router.get("/{sid}/analytics")

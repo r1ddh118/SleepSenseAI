@@ -142,6 +142,7 @@ class ManualSleepSessionCreate(BaseModel):
 
 class ManualSleepSessionAccepted(BaseModel):
     session_id: str
+    id: str | None = None
     status: str = "PROCESSING"
 
 
