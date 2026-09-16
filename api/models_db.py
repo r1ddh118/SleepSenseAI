@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM: User, Session, Prediction, DoctorAlert."""
+"""SQLAlchemy ORM models."""
 
 from datetime import datetime
 
@@ -37,6 +37,8 @@ class Session(Base):
 
     user = relationship("User", back_populates="sessions")
     predictions = relationship("Prediction", back_populates="session")
+    manual_sleep_session = relationship("ManualSleepSession", back_populates="session", uselist=False)
+    sleep_analytics = relationship("SleepAnalytics", back_populates="session", uselist=False)
 
 
 class Prediction(Base):
@@ -73,3 +75,56 @@ class DoctorAlert(Base):
     resolved_at = Column(DateTime, nullable=True)
 
     doctor = relationship("User")
+
+
+class ManualSleepSession(Base):
+    __tablename__ = "manual_sleep_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False, unique=True)
+    patient_uid = Column(String, index=True, nullable=False)
+    date = Column(String, index=True, nullable=False)
+    bed_time = Column(String, nullable=True)
+    sleep_onset = Column(String, nullable=True)
+    wake_time = Column(String, nullable=True)
+    sleep_duration_hours = Column(Float, nullable=True)
+    sleep_efficiency = Column(Float, nullable=True)
+    n3_fraction = Column(Float, nullable=True)
+    rem_fraction = Column(Float, nullable=True)
+    wake_fraction = Column(Float, nullable=True)
+    heart_rate = Column(Float, nullable=True)
+    hr_std = Column(Float, nullable=True)
+    movement_std = Column(Float, nullable=True)
+    event_rate = Column(Float, nullable=True)
+    spo2 = Column(Float, nullable=True)
+    caffeine = Column(Integer, nullable=True)
+    screen_time = Column(Integer, nullable=True)
+    exercise_minutes = Column(Integer, nullable=True)
+    stress_level = Column(Integer, nullable=True)
+    nap_minutes = Column(Integer, nullable=True)
+    awakenings = Column(Integer, nullable=True)
+    raw_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("Session", back_populates="manual_sleep_session")
+
+
+class SleepAnalytics(Base):
+    __tablename__ = "sleep_analytics"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False, unique=True)
+    status = Column(String, default="PROCESSING", index=True)
+    sleep_score = Column(Float, nullable=True)
+    sleep_category = Column(String, nullable=True)
+    sleep_efficiency = Column(Float, nullable=True)
+    risk_level = Column(String, nullable=True)
+    risk_json = Column(Text, nullable=True)
+    recommendations_json = Column(Text, nullable=True)
+    metrics_json = Column(Text, nullable=True)
+    spark_job_id = Column(String, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("Session", back_populates="sleep_analytics")

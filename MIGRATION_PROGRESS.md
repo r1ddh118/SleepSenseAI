@@ -907,6 +907,224 @@ not return promptly in this environment and was stopped. The router/model logic
 is covered by direct tests, and `api.main` imports successfully with the new
 router registered.
 
+## Step 11: Doctor Report
+
+### What Was Done
+
+- Added `analytics/report_builder.py`.
+  - Builds a complete doctor report payload.
+  - Renders JSON-ready dictionaries.
+  - Renders CSV.
+  - Renders HTML using Jinja2.
+- Added `api/routers/reports.py`.
+  - `GET /api/v1/sessions/{sid}/report?format=json`
+  - `GET /api/v1/sessions/{sid}/report?format=csv`
+  - `GET /api/v1/sessions/{sid}/report?format=html`
+- Registered the reports router in `api/main.py` before the legacy prediction
+  CSV report route, so the new multi-format endpoint handles report requests.
+- Added `tests/test_report_builder.py`.
+
+### Why It Was Done
+
+Doctors need a consolidated session report rather than raw model output or CSV
+prediction rows. This creates a structured report layer that can later be filled
+from Spark analytics summary tables, doctor alerts, recommendations, and DB
+metadata.
+
+### How It Was Done
+
+The report contains the required sections:
+
+- patient info
+- sleep summary
+- longitudinal trend
+- risk assessment
+- lifestyle
+- recommendations
+- alerts
+- model info
+- disclaimer
+
+The medical disclaimer text is present verbatim:
+
+```text
+SleepSense AI reports are academic analytics summaries only; they are not clinically validated, are not a medical diagnosis, and must not be used to diagnose or rule out any medical condition.
+```
+
+The report endpoint currently assembles available DB data from:
+
+- `Session`
+- latest `Prediction`
+- matching `DoctorAlert` rows
+
+Sections that need the future Spark-to-DB bridge are still rendered with a clear
+`Not available in DB yet` message instead of being omitted.
+
+### Verification
+
+Compiled updated files:
+
+```bash
+python -m py_compile analytics/report_builder.py api/routers/reports.py api/main.py tests/test_report_builder.py
+```
+
+Ran:
+
+```bash
+python -m pytest tests/test_report_builder.py -v
+```
+
+Observed:
+
+- `3 passed`
+
+Also verified:
+
+```bash
+python -c "import api.main; print('api import ok')"
+```
+
+Observed:
+
+- `api import ok`
+
+Pending live check:
+
+```bash
+curl "http://localhost:8000/api/v1/sessions/1/report?format=json" | jq
+curl "http://localhost:8000/api/v1/sessions/1/report?format=html" -o /tmp/report.html
+```
+
+This requires the API server to be running and a session row with ID or SID `1`
+to exist in the active database.
+
+## Step 12: Manual-Entry API And Frontend
+
+### What Was Done
+
+- Added `ManualSleepSession` ORM model.
+- Added `SleepAnalytics` ORM model.
+- Added `POST /api/v1/sessions/manual`.
+  - Accepts manual sleep fields.
+  - Allows `"unknown"`/blank optional values.
+  - Saves a raw manual session row.
+  - Creates an initial `SleepAnalytics(status="PROCESSING")` row.
+  - Enqueues `run_sleep_analytics(session_id)` via Celery.
+  - Returns immediately:
+
+```json
+{"session_id": "...", "status": "PROCESSING"}
+```
+
+- Added `GET /api/v1/sessions/{sid}/analytics`.
+  - Resolves either DB session ID or SID.
+  - Returns `PROCESSING`, `COMPLETED`, or `FAILED`.
+  - Returns sleep score, risk, recommendations, metrics, and Spark job ID when
+    complete.
+- Added Celery task `run_sleep_analytics(session_id)`.
+  - Reads the saved manual row.
+  - Builds a small observation-level CSV under `data/raw/manual/`.
+  - Runs the Spark chain outside the request thread:
+    - ingestion
+    - cleaning
+    - feature engineering
+    - nightly metrics
+    - sleep score
+    - risk features
+    - longitudinal metrics
+  - Generates metric-triggered recommendations.
+  - Stores the result in `SleepAnalytics`.
+- Added frontend page:
+  - `frontend/src/app/pages/RecordSleep.tsx`
+- Added frontend routes:
+  - `/record-sleep`
+  - `/doctor`
+- Updated patient dashboard CTA to open `/record-sleep`.
+- Added `tests/test_manual_sessions.py`.
+
+### Why It Was Done
+
+The primary app path is now manual entry -> DB raw row -> Celery -> Spark
+analytics -> polling, instead of hardware/MQTT or inline request processing.
+
+This preserves the architecture rule that FastAPI should save/enqueue and return
+quickly, while Celery owns the Spark work.
+
+### How It Was Done
+
+- The manual endpoint is intentionally unauthenticated for the current demo curl
+  workflow.
+- Unknown values are stored as `None`.
+- The Celery task adapts a manual nightly summary into a small observation CSV so
+  the same Spark modules are still used.
+- The frontend form polls `GET /api/v1/sessions/{id}/analytics` every 2.5
+  seconds until the status changes away from `PROCESSING`.
+
+### Verification
+
+Compiled backend files:
+
+```bash
+python -m py_compile api/models_db.py api/database.py api/schemas.py api/routers/sessions.py api/tasks.py
+```
+
+Ran manual-session tests:
+
+```bash
+python -m pytest tests/test_manual_sessions.py -v
+```
+
+Observed:
+
+- `2 passed`
+
+Covered cases:
+
+- Manual submission saves `Session`, `ManualSleepSession`, and
+  `SleepAnalytics(PROCESSING)`.
+- Celery `.delay()` is called with the session ID.
+- The response is immediate and returns `PROCESSING`.
+- Polling the analytics endpoint returns a processing payload before worker
+  completion.
+
+Frontend verification:
+
+```bash
+npm run build
+```
+
+Could not run because `vite` is not installed in the current frontend
+environment:
+
+```text
+sh: line 1: vite: command not found
+```
+
+Pending live verification:
+
+- Start Redis.
+- Start Celery worker.
+- Start FastAPI.
+- Submit:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/sessions/manual \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"U034","date":"2026-09-10","sleep_efficiency":0.82,"n3_fraction":0.12,"rem_fraction":0.18,"wake_fraction":0.14,"screen_time":150,"stress_level":7}'
+```
+
+- Poll:
+
+```bash
+curl http://localhost:8000/api/v1/sessions/<id>/analytics
+```
+
+Expected:
+
+- First response: `PROCESSING`.
+- Later response: `COMPLETED` with sleep score, risk, recommendations, and
+  Spark-derived metrics.
+
 ## Current Uncommitted Work
 
 The following work is currently present in the working tree on
@@ -928,6 +1146,9 @@ The following work is currently present in the working tree on
 - Expanded Spark longitudinal averages and trend deltas.
 - Metric-triggered recommendation engine and tests.
 - Persistence-based doctor alert engine, ORM model, router, and tests.
+- Doctor report builder, report router, and report tests.
+- Manual-entry API, Celery Spark analytics task, polling analytics endpoint,
+  frontend record-sleep page, and manual-session tests.
 - This progress report.
 
 ## Next Likely Step

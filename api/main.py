@@ -13,7 +13,7 @@ if str(API_DIR) not in sys.path:
     sys.path.insert(0, str(API_DIR))
 
 from database import init_db
-from routers import alerts, auth_router, frontend_adapter, health, models, predictions, sessions
+from routers import alerts, auth_router, frontend_adapter, health, models, predictions, reports, sessions
 from ws_manager import ws_manager
 
 logging.basicConfig(level=logging.INFO)
@@ -51,6 +51,7 @@ app.add_middleware(
 
 app.include_router(auth_router.router)
 app.include_router(sessions.router)
+app.include_router(reports.router)
 app.include_router(predictions.router)
 app.include_router(models.router)
 app.include_router(health.router)
