@@ -122,6 +122,44 @@ def _write_manual_observation_csv(manual, session_sid: str) -> Path:
     return out_path
 
 
+def _analytics_history_for_patient(db, patient_uid: str) -> list[dict]:
+    """Build patient nightly rows from completed manual Spark analytics."""
+    from models_db import ManualSleepSession, Session as SessionModel, SleepAnalytics
+
+    rows = (
+        db.query(ManualSleepSession, SessionModel, SleepAnalytics)
+        .join(SessionModel, ManualSleepSession.session_id == SessionModel.id)
+        .join(SleepAnalytics, SleepAnalytics.session_id == SessionModel.id)
+        .filter(ManualSleepSession.patient_uid == patient_uid)
+        .filter(SleepAnalytics.status == "COMPLETED")
+        .order_by(ManualSleepSession.date.asc(), SessionModel.id.asc())
+        .all()
+    )
+
+    history: list[dict] = []
+    for manual, session, analytics in rows:
+        try:
+            metrics = json.loads(analytics.metrics_json or "{}")
+        except json.JSONDecodeError:
+            metrics = {}
+        try:
+            risk = json.loads(analytics.risk_json or "{}")
+        except json.JSONDecodeError:
+            risk = {}
+
+        history.append(
+            {
+                "user_id": manual.patient_uid,
+                "session_id": session.sid,
+                "date": manual.date,
+                "sleep_score": analytics.sleep_score,
+                "risk_level": analytics.risk_level or risk.get("risk_level"),
+                "event_rate": metrics.get("event_rate"),
+            }
+        )
+    return history
+
+
 def _load_pipeline_main():
     """Import SleepSenseApp from repo src/main.py (not api/main.py)."""
     path = Path(settings.src_path) / "main.py"
@@ -380,6 +418,7 @@ def run_sleep_analytics(self, session_id: int) -> dict:
     from analytics.recommendations import generate_recommendations
     from database import SessionLocal
     from models_db import ManualSleepSession, Session as SessionModel, SleepAnalytics
+    from routers.alerts import create_alerts_for_history
     from spark.cleaning import clean_sleep_data
     from spark.feature_engineering import add_rolling_features
     from spark.ingestion import load_sleep_data
@@ -466,8 +505,16 @@ def run_sleep_analytics(self, session_id: int) -> dict:
         session.status = "COMPLETED"
         db.commit()
 
+        nightly_history = _analytics_history_for_patient(db, manual.patient_uid)
+        alerts = create_alerts_for_history(db, nightly_history)
+
         logger.info("[%s] Manual Spark analytics complete", session.sid)
-        return {"session_id": session_id, "status": "COMPLETED", "sleep_score": analytics.sleep_score}
+        return {
+            "session_id": session_id,
+            "status": "COMPLETED",
+            "sleep_score": analytics.sleep_score,
+            "alerts_created": len(alerts),
+        }
     except Exception as exc:
         logger.exception("Manual Spark analytics failed for session_id=%s", session_id)
         analytics = db.query(SleepAnalytics).filter(SleepAnalytics.session_id == session_id).first()

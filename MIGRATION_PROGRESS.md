@@ -1125,41 +1125,143 @@ Expected:
 - Later response: `COMPLETED` with sleep score, risk, recommendations, and
   Spark-derived metrics.
 
-## Current Uncommitted Work
+## Step 13: Full Integration Chain Smoke Test
 
-The following work is currently present in the working tree on
-`pyspark-bigdata`:
+### What Was Done
 
-- MQTT/hardware primary-path removal.
-- Optional hardware dependency split.
-- Initial `spark/`, `analytics/`, and `ml/` package placeholders.
-- Synthetic data generator.
-- Generated synthetic CSV.
-- Spark session, schema, ingestion, cleaning, rolling feature, and nightly
-  analytics modules.
-- Spark SQL helper, sleep score transform, risk feature transform, longitudinal
-  transform, pipeline orchestrator, and pipeline CLI.
-- Generated analytics Parquet table under `data/parquet/`.
-- Plain-Python academic sleep score module and tests.
-- Rule-based condition risk engine and risk-analysis tests.
-- Regenerated analytics Parquet with risk feature columns and `risk_flags_json`.
-- Expanded Spark longitudinal averages and trend deltas.
-- Metric-triggered recommendation engine and tests.
-- Persistence-based doctor alert engine, ORM model, router, and tests.
-- Doctor report builder, report router, and report tests.
-- Manual-entry API, Celery Spark analytics task, polling analytics endpoint,
-  frontend record-sleep page, and manual-session tests.
-- This progress report.
+- Wired completed manual Spark analytics into persistence-based doctor alert
+  creation inside `tasks.run_sleep_analytics`.
+- Added `_analytics_history_for_patient()` so each completed manual session can
+  evaluate the patient's recent nightly history.
+- Updated `api/routers/reports.py` so doctor reports prefer `SleepAnalytics`
+  and manual-entry data when available.
+- Updated `api/routers/frontend_adapter.py` so the dashboard and session detail
+  pages expose Spark analytics scores, stage percentages, risk level, and
+  recommendations.
+- Added `tests/test_full_integration.py`.
+- Added `tests/conftest.py` so repo-root and API imports work consistently when
+  test files are run alone or in groups.
+- Added `data/raw/manual/` to `.gitignore` because manual analytics jobs create
+  transient observation CSVs there.
+
+### Why It Was Done
+
+The manual-entry flow already saved raw rows and queued Celery, but the final
+application chain needed the downstream consumers to use the new analytics
+record:
+
+- alerts should be created after the Celery/Spark job finishes;
+- reports should include sleep score, risk, lifestyle, longitudinal, alert, and
+  recommendation sections from `SleepAnalytics`;
+- the dashboard should show the new analytics result instead of legacy zeros or
+  only old `Prediction` rows.
+
+### How It Was Done
+
+- The Celery task now commits `SleepAnalytics(COMPLETED)`, rebuilds the
+  patient's completed nightly history, and calls
+  `create_alerts_for_history()`.
+- The report route now loads:
+  - `ManualSleepSession`
+  - `SleepAnalytics`
+  - legacy `Prediction` only as fallback
+- The frontend adapter now converts analytics metrics into the frontend's
+  expected dashboard shape.
+- The integration test runs this chain synchronously:
+  - manual route function saves session rows;
+  - Celery task runs synchronously;
+  - Spark calls are replaced with a deterministic fake DataFrame pipeline for a
+    fast local smoke test;
+  - analytics endpoint, doctor alerts, report payload, and dashboard payload are
+    checked from the real DB models.
+
+### Verification
+
+Focused integration test:
+
+```bash
+pytest tests/test_full_integration.py -v
+```
+
+Observed:
+
+- `1 passed`
+
+Focused regression suite:
+
+```bash
+pytest tests/test_manual_sessions.py tests/test_alerts.py tests/test_report_builder.py tests/test_full_integration.py -v
+```
+
+Observed:
+
+- `10 passed`
+
+Compile check:
+
+```bash
+python -m py_compile api/tasks.py api/routers/reports.py api/routers/frontend_adapter.py tests/test_full_integration.py tests/conftest.py
+```
+
+Observed:
+
+- no compile errors
+
+### Notes
+
+- The integration test does not start Redis, Uvicorn, or a JVM-backed Spark
+  session. It verifies application wiring around the Celery task with a
+  deterministic local Spark stand-in.
+- Live verification was also run:
+
+```bash
+python scripts/generate_synthetic_sleep.py
+python scripts/run_spark_pipeline.py
+uvicorn api.main:app --reload
+```
+
+Observed:
+
+- Synthetic generator wrote `1,259,952` rows.
+- Spark pipeline wrote `data/parquet` with `8,400` nightly rows.
+- `uvicorn api.main:app --reload --port 8000` could not bind because port
+  `8000` was already in use.
+- The same app booted cleanly on port `8010`:
+
+```bash
+timeout 8s uvicorn api.main:app --reload --port 8010
+```
+
+Observed startup:
+
+```text
+Application startup complete.
+```
+
+Remaining live check:
+
+- Start Redis/Celery, submit a manual session, poll
+  `GET /api/v1/sessions/{id}/analytics`, inspect `/api/v1/doctor/alerts`, open
+  the session report, and load the dashboard.
+
+## Current Status
+
+The PySpark migration now has the main functional pieces in place:
+
+- hardware/MQTT removed from the primary run path;
+- synthetic longitudinal data generation;
+- Spark ingestion, cleaning, rolling features, nightly analytics, sleep score,
+  risk features, longitudinal metrics, SQL helper, Parquet pipeline, and CLI;
+- academic sleep score and rule-based risk engines;
+- metric-triggered recommendations;
+- persistence-based doctor alerts;
+- doctor report generation in JSON, CSV, and HTML;
+- manual-entry API, Celery analytics task, polling endpoint, and frontend
+  screens;
+- integration smoke coverage for manual input through dashboard/report/alerts.
 
 ## Next Likely Step
 
-Build the plain-Python analytics/reporting layer and persistence bridge:
-
-- `analytics/condition_risk.py`
-- `analytics/alerts.py`
-- `analytics/recommendations.py`
-- `analytics/report_builder.py`
-- API/Celery task updates to call `spark/pipeline.py` and store summary rows.
-
-This will connect the Spark-computed table to non-diagnostic business rules,
-persistence-based alerts, and user/doctor-facing artifacts.
+Run a live service smoke test with Redis, Celery, Uvicorn, and JVM-backed Spark,
+then fix any environment-specific issues in the worker startup or dashboard API
+shape.

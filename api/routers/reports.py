@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from analytics.report_builder import build_report_payload, render_report_csv, render_report_html
 from database import get_db
-from models_db import DoctorAlert, Prediction, Session as SessionModel
+from models_db import DoctorAlert, ManualSleepSession, Prediction, Session as SessionModel, SleepAnalytics
 
 router = APIRouter(prefix="/api/v1", tags=["reports"])
 
@@ -42,6 +42,14 @@ def _latest_prediction(db: DBSession, session_id: int) -> Prediction | None:
         .order_by(Prediction.created_at.desc())
         .first()
     )
+
+
+def _analytics(db: DBSession, session_id: int) -> SleepAnalytics | None:
+    return db.query(SleepAnalytics).filter(SleepAnalytics.session_id == session_id).first()
+
+
+def _manual_session(db: DBSession, session_id: int) -> ManualSleepSession | None:
+    return db.query(ManualSleepSession).filter(ManualSleepSession.session_id == session_id).first()
 
 
 def _session_alerts(db: DBSession, session: SessionModel) -> list[dict[str, Any]]:
@@ -75,14 +83,23 @@ def _build_report(db: DBSession, sid: str) -> dict[str, Any]:
         raise HTTPException(404, f"Session '{sid}' not found")
 
     prediction = _latest_prediction(db, session.id)
-    recommendations = _load_json(prediction.recommendations_json, []) if prediction else []
+    analytics = _analytics(db, session.id)
+    manual = _manual_session(db, session.id)
+    metrics = _load_json(analytics.metrics_json, {}) if analytics else {}
+    risk_payload = _load_json(analytics.risk_json, {}) if analytics else {}
+    recommendations = (
+        _load_json(analytics.recommendations_json, [])
+        if analytics and analytics.recommendations_json
+        else (_load_json(prediction.recommendations_json, []) if prediction else [])
+    )
     shap_features = _load_json(prediction.shap_features, []) if prediction else []
 
     patient_info = {
-        "patient_id": session.user_id,
+        "patient_id": manual.patient_uid if manual else session.user_id,
         "session_id": session.sid,
         "database_session_id": session.id,
         "status": session.status,
+        "analytics_status": analytics.status if analytics else "Not available",
         "created_at": session.created_at.isoformat() if session.created_at else None,
         "started_at": session.started_at.isoformat() if session.started_at else None,
         "ended_at": session.ended_at.isoformat() if session.ended_at else None,
@@ -94,6 +111,18 @@ def _build_report(db: DBSession, sid: str) -> dict[str, Any]:
 
     sleep_summary = {
         "duration_seconds": session.duration_seconds,
+        "date": manual.date if manual else None,
+        "sleep_score": analytics.sleep_score if analytics else None,
+        "sleep_category": analytics.sleep_category if analytics else None,
+        "sleep_efficiency": analytics.sleep_efficiency if analytics else None,
+        "sleep_duration_hours": metrics.get("sleep_duration_hours"),
+        "stage_fractions": {
+            "wake": metrics.get("wake_fraction"),
+            "n1": metrics.get("n1_fraction"),
+            "n2": metrics.get("n2_fraction"),
+            "n3": metrics.get("n3_fraction"),
+            "rem": metrics.get("rem_fraction"),
+        },
         "prediction_label": prediction.label if prediction else "Not available",
         "prediction_probability": prediction.probability if prediction else None,
         "prediction": prediction.prediction if prediction else None,
@@ -101,15 +130,36 @@ def _build_report(db: DBSession, sid: str) -> dict[str, Any]:
     }
 
     risk_assessment = {
-        "risk_level": prediction.label if prediction else "Not available",
+        "risk_level": analytics.risk_level if analytics else (prediction.label if prediction else "Not available"),
+        "risk_score": risk_payload.get("risk_score"),
+        "risk_flags": risk_payload.get("risk_flags", []),
+        "event_rate": metrics.get("event_rate"),
         "probability": prediction.probability if prediction else None,
         "shap_top_features": shap_features,
     }
 
+    lifestyle = {
+        "caffeine": metrics.get("caffeine", manual.caffeine if manual else None),
+        "screen_time": metrics.get("screen_time", manual.screen_time if manual else None),
+        "exercise_minutes": metrics.get("exercise_minutes", manual.exercise_minutes if manual else None),
+        "stress_level": metrics.get("stress_level", manual.stress_level if manual else None),
+        "nap_minutes": metrics.get("nap_minutes", manual.nap_minutes if manual else None),
+        "awakenings": metrics.get("awakenings", manual.awakenings if manual else None),
+    }
+
+    longitudinal_trend = {
+        key: value
+        for key, value in metrics.items()
+        if key.endswith(("_7d_avg", "_14d_avg", "_30d_avg", "_7d_trend", "_14d_trend", "_30d_trend"))
+    }
+    if not longitudinal_trend:
+        longitudinal_trend = {"status": "Not available for this session yet"}
+
     model_info = {
-        "model_name": prediction.model_name if prediction else "Not available",
-        "model_output_type": "legacy prediction row" if prediction else "Not available",
+        "model_name": prediction.model_name if prediction else "Spark analytics rule pipeline",
+        "model_output_type": "Spark nightly analytics" if analytics else ("legacy prediction row" if prediction else "Not available"),
         "clinically_validated": False,
+        "analytics_label": "Academic analytics score and screening rules; not clinically validated.",
     }
 
     return build_report_payload(
@@ -117,15 +167,9 @@ def _build_report(db: DBSession, sid: str) -> dict[str, Any]:
         generated_at=datetime.utcnow().isoformat(),
         patient_info=patient_info,
         sleep_summary=sleep_summary,
-        longitudinal_trend={
-            "status": "Not available in DB yet",
-            "source": "Spark Parquet analytics table will populate this section in the DB bridge phase.",
-        },
+        longitudinal_trend=longitudinal_trend,
         risk_assessment=risk_assessment,
-        lifestyle={
-            "status": "Not available in DB yet",
-            "source": "Manual session/lifestyle fields will populate this section in the DB bridge phase.",
-        },
+        lifestyle=lifestyle,
         recommendations=recommendations,
         alerts=_session_alerts(db, session),
         model_info=model_info,
