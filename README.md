@@ -163,6 +163,10 @@ The Vite dev server proxies `/api` and `/ws` to `http://localhost:8010`.
 8. Open `http://localhost:5173/doctor`.
 9. After several poor nights, confirm doctor alerts/report data appears.
 
+The old `/session/new` hardware recording screen has been removed from the primary UI. That path redirects to `/record-sleep`, so new sessions are created through manual entry only.
+
+Completed manual sessions are saved in the frontend session list. Opening a saved session shows its sleep-stage distribution, generated hypnogram, heart-rate chart, and an estimated EDA chart for that specific manual-entry night.
+
 If browser requests to `/api/...` return `404` from `localhost:5173`, restart Vite and confirm `frontend/vite.config.ts` includes the proxy to `localhost:8010`.
 
 ## Manual API Smoke Test

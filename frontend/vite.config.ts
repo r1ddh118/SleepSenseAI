@@ -3,7 +3,7 @@ import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
-const apiTarget = process.env.VITE_API_TARGET ?? 'http://localhost:8000'
+const apiTarget = process.env.VITE_API_TARGET ?? 'http://localhost:8010'
 
 function figmaAssetResolver() {
   return {

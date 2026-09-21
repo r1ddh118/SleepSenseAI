@@ -180,7 +180,7 @@ export const mockSessions: Session[] = [
 ];
 
 // Generate continuous sensor data
-export const generateSensorData = (sessionId: string): SensorStream => {
+export const generateSensorData = (sessionId: string, sessionOverride?: Session): SensorStream => {
   const baseTimestamp = new Date("2026-04-09T22:00:00").getTime();
   const points = 480; // 8 hours of data, one per minute
   
@@ -189,7 +189,7 @@ export const generateSensorData = (sessionId: string): SensorStream => {
   const temp: SensorDataPoint[] = [];
   const bvp: SensorDataPoint[] = [];
   
-  const session = mockSessions.find(s => s.id === sessionId);
+  const session = sessionOverride ?? mockSessions.find(s => s.id === sessionId);
   const hrMean = session?.features.HR_mean || 65;
   const hrStd = session?.features.HR_std || 8;
   const edaMean = session?.features.EDA_mean || 3;
@@ -226,12 +226,12 @@ export const generateSensorData = (sessionId: string): SensorStream => {
 };
 
 // Generate hypnogram data
-export const generateHypnogramData = (sessionId: string): HypnogramPoint[] => {
+export const generateHypnogramData = (sessionId: string, sessionOverride?: Session): HypnogramPoint[] => {
   const baseTimestamp = new Date("2026-04-09T22:00:00").getTime();
   const epochs = 96; // 8 hours, 5-minute epochs
   const data: HypnogramPoint[] = [];
   
-  const session = mockSessions.find(s => s.id === sessionId);
+  const session = sessionOverride ?? mockSessions.find(s => s.id === sessionId);
   if (!session) return [];
   
   const stages = session.sleepStages;

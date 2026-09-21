@@ -27,8 +27,8 @@ export function SessionDetail() {
     );
   }
 
-  const sensorData = generateSensorData(id || "S001");
-  const hypnogramData = generateHypnogramData(id || "S001");
+  const sensorData = generateSensorData(id || "S001", session);
+  const hypnogramData = generateHypnogramData(id || "S001", session);
 
   const recommendations: string[] = [];
   if (session.sleepStages.n3 < 10) {
@@ -136,12 +136,12 @@ export function SessionDetail() {
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <Droplets className="w-5 h-5 text-blue-500" />
-                <p className="text-sm text-gray-600 dark:text-gray-400">EDA</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">EDA Estimate</p>
               </div>
               <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                 {session.features.EDA_mean.toFixed(1)} <span className="text-sm font-normal text-gray-500">µS</span>
               </p>
-              <p className="text-xs text-gray-500 mt-1">Electrodermal Activity</p>
+              <p className="text-xs text-gray-500 mt-1">Manual-entry derived proxy</p>
             </div>
             <div>
               <div className="flex items-center gap-2 mb-2">
@@ -232,7 +232,7 @@ export function SessionDetail() {
             unit="bpm"
             yAxisDomain={[40, 100]}
           />
-          <SensorChart data={sensorData.eda} title="Electrodermal Activity (EDA)" color="#3b82f6" unit="µS" />
+          <SensorChart data={sensorData.eda} title="Estimated Electrodermal Activity (EDA)" color="#3b82f6" unit="µS" />
           <SensorChart
             data={sensorData.temp}
             title="Skin Temperature"

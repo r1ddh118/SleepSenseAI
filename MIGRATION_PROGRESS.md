@@ -1403,6 +1403,73 @@ The PySpark migration now has the main functional pieces in place:
   screens;
 - integration smoke coverage for manual input through dashboard/report/alerts.
 
+## Step 15: Manual-Only Frontend Session Flow
+
+### What Was Done
+
+- Removed the old hardware recording page:
+  - deleted `frontend/src/app/pages/NewSession.tsx`
+  - changed `/session/new` to redirect to `/record-sleep`
+  - changed empty-dashboard "first session" CTA to `/record-sleep`
+- Updated manual entry so completed Spark analytics are saved into the
+  frontend session list for the logged-in user.
+- Saved manual sessions now include:
+  - sleep score/category
+  - risk level/probability
+  - stage percentages
+  - heart-rate metrics
+  - event rate
+  - sleep efficiency
+  - estimated EDA proxy for manual-entry nights
+- Updated session detail so the HR/EDA/hypnogram charts use the selected saved
+  session rather than falling back to generic mock data.
+- Updated EDA labels to make clear that manual-entry EDA is an estimate/proxy,
+  not a live Empatica sensor value.
+- Added Vite proxy config so frontend `/api` and `/ws` requests reach FastAPI on
+  `localhost:8010`.
+
+### Why It Was Done
+
+The primary app should no longer ask the user to connect Raspberry Pi/Empatica
+hardware or start a live recording. New sessions should be created by manual
+entry, saved as sessions, and then opened from the dashboard to inspect the
+corresponding analytics/EDA-style charts.
+
+### Verification
+
+Searched for the removed hardware screen text:
+
+```bash
+rg -n "NewSession|New Recording Session|Connect Empatica|Start Recording|Raspberry Pi 5 Connected|Empatica E4 Detected" frontend/src README.md MIGRATION_PROGRESS.md
+```
+
+Observed:
+
+- no remaining hardware-recording page source or route import;
+- `/session/new` remains only as a redirect to `/record-sleep`.
+
+Built the frontend:
+
+```bash
+cd frontend
+npm run build
+```
+
+Observed:
+
+- build completed successfully.
+
+### How To Test In Browser
+
+1. Start Redis, Celery, FastAPI on `8010`, and Vite on `5173`.
+2. Open `http://localhost:5173/record-sleep`.
+3. Submit a manual sleep session.
+4. Wait for status to change from `PROCESSING` to `COMPLETED`.
+5. Click `Open saved EDA/session analysis` or go to `/dashboard`.
+6. Confirm the saved session appears.
+7. Open the session card and confirm the detail page shows the selected
+   session's HR, estimated EDA, hypnogram, sleep stages, and recommendations.
+
 ## Next Likely Step
 
 Decide the doctor-alert product policy:

@@ -2,7 +2,6 @@ import { createBrowserRouter, Navigate } from "react-router";
 import { Dashboard } from "./pages/Dashboard";
 import { SessionDetail } from "./pages/SessionDetail";
 import { ModelLeaderboard } from "./pages/ModelLeaderboard";
-import { NewSession } from "./pages/NewSession";
 import { RecordSleep } from "./pages/RecordSleep";
 import { DoctorDashboard } from "./pages/DoctorDashboard";
 import { Login } from "./pages/Login";
@@ -40,11 +39,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/session/new",
-    element: (
-      <ProtectedRoute>
-        <NewSession />
-      </ProtectedRoute>
-    ),
+    element: <Navigate to="/record-sleep" replace />,
   },
   {
     path: "/session/:id",

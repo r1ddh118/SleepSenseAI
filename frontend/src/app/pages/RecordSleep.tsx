@@ -1,13 +1,18 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { ArrowLeft, Loader2, Moon, Send } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 type AnalyticsResult = {
   status: string;
+  session_id?: string;
+  sid?: string;
   sleep_score?: number;
   sleep_category?: string;
   risk_level?: string;
   recommendations?: Array<{ area: string; message: string }>;
+  risk?: { risk_score?: number; risk_level?: string };
+  metrics?: Record<string, any>;
   error?: string | null;
 };
 
@@ -35,7 +40,83 @@ const initialForm = {
   awakenings: "2",
 };
 
+const numberFrom = (value: unknown, fallback = 0) => {
+  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const percentFromFraction = (value: unknown) => Math.round(numberFrom(value, 0) * 100);
+
+const riskLevelToProbability = (riskLevel?: string, score?: number) => {
+  const normalized = String(riskLevel ?? "").toUpperCase();
+  if (normalized.includes("HIGH")) {
+    return 0.82;
+  }
+  if (normalized.includes("MODERATE")) {
+    return 0.52;
+  }
+  if (normalized.includes("LOW")) {
+    return 0.18;
+  }
+  if (typeof score === "number") {
+    return Math.max(0, Math.min(1, 1 - score / 100));
+  }
+  return 0;
+};
+
+const estimateEda = (metrics: Record<string, any>) => {
+  const stress = numberFrom(metrics.stress_level, 4);
+  const wakeFraction = numberFrom(metrics.wake_fraction, 0.1);
+  const eventRate = numberFrom(metrics.event_rate, 0);
+  return Number(Math.max(0.5, 1.2 + stress * 0.35 + wakeFraction * 2.2 + eventRate * 8).toFixed(2));
+};
+
+const saveCompletedSession = (storageKey: string, analytics: AnalyticsResult) => {
+  const metrics = analytics.metrics ?? {};
+  const id = String(analytics.session_id || analytics.sid || metrics.session_id || "").trim();
+  if (!id) {
+    return;
+  }
+
+  const sleepScore = numberFrom(analytics.sleep_score, numberFrom(metrics.sleep_score, 0));
+  const sleepEfficiency = numberFrom(analytics.metrics?.sleep_efficiency, numberFrom(metrics.sleep_efficiency, 0));
+  const storedSession = {
+    id,
+    sid: analytics.sid || metrics.session_id || id,
+    date: metrics.date || new Date().toISOString().slice(0, 10),
+    duration: Math.round(numberFrom(metrics.sleep_duration_hours, 8) * 60),
+    riskProbability: riskLevelToProbability(analytics.risk_level || metrics.risk_level, sleepScore),
+    riskLevel: String(analytics.risk_level || metrics.risk_level || "LOW").toLowerCase(),
+    status: "completed",
+    sleepScore,
+    sleepCategory: analytics.sleep_category || metrics.sleep_category,
+    sleepStages: {
+      wake: percentFromFraction(metrics.wake_fraction),
+      n1: percentFromFraction(metrics.n1_fraction),
+      n2: percentFromFraction(metrics.n2_fraction),
+      n3: percentFromFraction(metrics.n3_fraction),
+      rem: percentFromFraction(metrics.rem_fraction),
+    },
+    features: {
+      HR_mean: numberFrom(metrics.avg_hr, numberFrom(metrics.avg_heart_rate, 0)),
+      HR_std: numberFrom(metrics.hr_std, numberFrom(metrics.stddev_heart_rate, 0)),
+      EDA_mean: estimateEda(metrics),
+      TEMP_mean: 34,
+      event_rate: numberFrom(metrics.event_rate, 0),
+      sleep_efficiency: sleepEfficiency,
+    },
+    recommendations: analytics.recommendations ?? [],
+    createdAt: new Date().toISOString(),
+  };
+
+  const existing = JSON.parse(localStorage.getItem(storageKey) || "[]");
+  const sessions = Array.isArray(existing) ? existing : [];
+  const next = [storedSession, ...sessions.filter((session: any) => session?.id !== id)];
+  localStorage.setItem(storageKey, JSON.stringify(next));
+};
+
 export function RecordSleep() {
+  const { user } = useAuth();
   const [form, setForm] = useState(initialForm);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState("");
@@ -81,10 +162,13 @@ export function RecordSleep() {
       setStatus(data.status);
       if (data.status !== "PROCESSING") {
         window.clearInterval(timer);
+        if (data.status === "COMPLETED" && user?.email) {
+          saveCompletedSession(`sessions_${user.email}`, data);
+        }
       }
     }, 2500);
     return () => window.clearInterval(timer);
-  }, [sessionId, status]);
+  }, [sessionId, status, user?.email]);
 
   const fields = [
     ["user_id", "Patient ID"],
@@ -163,6 +247,12 @@ export function RecordSleep() {
                   <p>Score: {analytics.sleep_score} ({analytics.sleep_category})</p>
                   <p>Risk: {analytics.risk_level}</p>
                   <p>Recommendations: {analytics.recommendations?.length ?? 0}</p>
+                  <Link
+                    to={`/session/${analytics.session_id || sessionId}`}
+                    className="inline-flex text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    Open saved EDA/session analysis
+                  </Link>
                 </div>
               )}
               {analytics?.status === "FAILED" && <p className="text-sm text-red-600">{analytics.error}</p>}
