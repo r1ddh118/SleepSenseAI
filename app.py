@@ -1,7 +1,7 @@
 """SleepSense AI unified launcher.
 
-Run API, Celery worker, optional frontend, and optional local infrastructure
-(Redis + Mosquitto) from one command so developers do not need multiple terminals.
+Run API, Celery worker, optional frontend, and optional local Redis from one
+command so developers do not need multiple terminals.
 """
 
 from __future__ import annotations
@@ -71,9 +71,15 @@ class Launcher:
         if shutil.which(name) is None:
             raise RuntimeError(f"Required executable '{name}' not found. {help_text}")
 
-    def _add(self, name: str, command: list[str], cwd: Path | None = None) -> None:
+    def _add(
+        self,
+        name: str,
+        command: list[str],
+        cwd: Path | None = None,
+        env: dict[str, str] | None = None,
+    ) -> None:
         self.procs.append(
-            ManagedProcess(name=name, command=command, cwd=cwd or ROOT, env=self._env())
+            ManagedProcess(name=name, command=command, cwd=cwd or ROOT, env=env or self._env())
         )
 
     def _port_is_available(self, host: str, port: int) -> bool:
@@ -96,14 +102,6 @@ class Launcher:
         if self.args.with_redis:
             self._ensure_port_available("Redis", "127.0.0.1", 6379, "--no-redis")
 
-        if self.args.with_mqtt:
-            self._ensure_port_available(
-                "Mosquitto",
-                "127.0.0.1",
-                self.args.mqtt_port,
-                f"--mqtt-port {self.args.mqtt_port + 1}",
-            )
-
         api_bind_host = self.args.api_host
         if api_bind_host == "0.0.0.0":
             api_bind_host = "127.0.0.1"
@@ -117,14 +115,6 @@ class Launcher:
         if self.args.with_redis:
             self._ensure_binary("redis-server", "Install Redis or run with --no-redis.")
             self._add("redis", ["redis-server"])
-
-        if self.args.with_mqtt:
-            self._ensure_binary(
-                "mosquitto",
-                "Install Mosquitto broker or run with --no-mqtt.",
-            )
-            mqtt_cmd = ["mosquitto", "-p", str(self.args.mqtt_port)]
-            self._add("mosquitto", mqtt_cmd)
 
         self._ensure_binary("celery", "Install API dependencies in your active environment.")
         self._add(
@@ -154,7 +144,17 @@ class Launcher:
                 npm_bin,
                 "Install Node.js + npm or launch with --no-frontend.",
             )
-            self._add("frontend", [npm_bin, "run", "dev", "--", "--host"], cwd=ROOT / "frontend")
+            frontend_env = self._env()
+            # Keep Vite's proxy aligned with a custom --api-port as well as the
+            # default Uvicorn port.  127.0.0.1 is required when Uvicorn binds
+            # to 0.0.0.0.
+            frontend_env["VITE_API_TARGET"] = f"http://127.0.0.1:{self.args.api_port}"
+            self._add(
+                "frontend",
+                [npm_bin, "run", "dev", "--", "--host"],
+                cwd=ROOT / "frontend",
+                env=frontend_env,
+            )
 
     def start(self) -> int:
         self.build()
@@ -201,8 +201,6 @@ class Launcher:
         print(f"  • API docs:      http://{self.args.api_host}:{self.args.api_port}/docs")
         if self.args.with_frontend:
             print("  • Frontend:      http://localhost:5173")
-        if self.args.with_mqtt:
-            print(f"  • MQTT broker:   mqtt://localhost:{self.args.mqtt_port}")
         print("\nPress Ctrl+C to stop all services together.")
 
 
@@ -210,13 +208,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run SleepSense services in a single terminal.")
     parser.add_argument("--api-host", default="0.0.0.0")
     parser.add_argument("--api-port", type=int, default=8000)
-    parser.add_argument("--mqtt-port", type=int, default=1883)
 
     parser.add_argument("--no-frontend", action="store_false", dest="with_frontend")
     parser.add_argument("--no-redis", action="store_false", dest="with_redis")
-    parser.add_argument("--no-mqtt", action="store_false", dest="with_mqtt")
 
-    parser.set_defaults(with_frontend=True, with_redis=True, with_mqtt=True)
+    parser.set_defaults(with_frontend=True, with_redis=True)
     return parser.parse_args()
 
 

@@ -1,7 +1,7 @@
 """Pydantic v2 request/response models."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, EmailStr
 
@@ -113,3 +113,51 @@ class HealthOut(BaseModel):
     database: str
     redis: str
     version: str = "1.0.0"
+
+
+class ManualSleepSessionCreate(BaseModel):
+    user_id: str
+    date: str
+    bed_time: str | None = None
+    sleep_onset: str | None = None
+    wake_time: str | None = None
+    sleep_duration_hours: float | str | None = None
+    sleep_efficiency: float | str | None = None
+    n3_fraction: float | str | None = None
+    rem_fraction: float | str | None = None
+    wake_fraction: float | str | None = None
+    heart_rate: float | str | None = None
+    hr_std: float | str | None = None
+    movement_std: float | str | None = None
+    event_rate: float | str | None = None
+    spo2: float | str | None = None
+    caffeine: int | str | None = None
+    screen_time: int | str | None = None
+    exercise_minutes: int | str | None = None
+    stress_level: int | str | None = None
+    nap_minutes: int | str | None = None
+    awakenings: int | str | None = None
+    notes: str | None = None
+
+
+class ManualSleepSessionAccepted(BaseModel):
+    session_id: str
+    id: str | None = None
+    status: str = "PROCESSING"
+
+
+class DoctorAlertOut(BaseModel):
+    id: int
+    patient_id: str
+    doctor_id: Optional[int]
+    session_id: str
+    alert_type: str
+    severity: str
+    reason: str
+    evidence: dict[str, Any]
+    status: str
+    created_at: datetime
+    acknowledged_at: Optional[datetime]
+    resolved_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}

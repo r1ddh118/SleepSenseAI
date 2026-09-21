@@ -1,0 +1,4 @@
+# Optional legacy hardware dependencies.
+# These are intentionally excluded from the primary API/Celery run path.
+
+paho-mqtt>=1.6.1

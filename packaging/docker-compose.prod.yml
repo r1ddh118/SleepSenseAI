@@ -1,4 +1,4 @@
-# Production-style stack: Postgres + Redis + Mosquitto + API + worker + nginx
+# Production-style stack: Postgres + Redis + API + worker + nginx
 # Usage: from repo root, with .env containing POSTGRES_PASSWORD, SECRET_KEY
 #   docker compose -f packaging/docker-compose.prod.yml --env-file .env up --build
 
@@ -20,13 +20,6 @@ services:
   redis:
     image: redis:7-alpine
 
-  mosquitto:
-    image: eclipse-mosquitto:2
-    ports:
-      - "1883:1883"
-    volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-
   api:
     build:
       context: ..
@@ -34,14 +27,11 @@ services:
     environment:
       - DATABASE_URL=postgresql://sleepsense:${POSTGRES_PASSWORD}@postgres/sleepsense
       - REDIS_URL=redis://redis:6379/0
-      - MQTT_BROKER_HOST=mosquitto
       - SECRET_KEY=${SECRET_KEY:?set SECRET_KEY}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
-      mosquitto:
         condition: service_started
     expose:
       - "8000"

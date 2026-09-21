@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session as DBSession
 
 from database import get_db
-from models_db import Prediction
+from models_db import Prediction, SleepAnalytics
 from models_db import Session as SessionModel
 from models_db import User
 
@@ -92,6 +92,43 @@ def _latest_prediction(db: DBSession, session_id: int) -> Prediction | None:
     )
 
 
+def _analytics(db: DBSession, session_id: int) -> SleepAnalytics | None:
+    return db.query(SleepAnalytics).filter(SleepAnalytics.session_id == session_id).first()
+
+
+def _risk_level_from_text(level: str | None) -> str:
+    normalized = str(level or "").upper()
+    if "HIGH" in normalized:
+        return "high"
+    if "MODERATE" in normalized:
+        return "moderate"
+    return "low"
+
+
+def _features_from_analytics(analytics: SleepAnalytics | None) -> tuple[dict[str, Any], dict[str, int]]:
+    if not analytics:
+        return {}, {}
+    metrics = _safe_json_loads(analytics.metrics_json, {})
+    sleep_stages = {
+        "wake": round(float(metrics.get("wake_fraction") or 0.0) * 100),
+        "n1": round(float(metrics.get("n1_fraction") or 0.0) * 100),
+        "n2": round(float(metrics.get("n2_fraction") or 0.0) * 100),
+        "n3": round(float(metrics.get("n3_fraction") or 0.0) * 100),
+        "rem": round(float(metrics.get("rem_fraction") or 0.0) * 100),
+    }
+    features = {
+        "HR_mean": float(metrics.get("avg_hr") or 0.0),
+        "HR_std": float(metrics.get("hr_std") or 0.0),
+        "EDA_mean": 0.0,
+        "TEMP_mean": 0.0,
+        "event_rate": float(metrics.get("event_rate") or 0.0),
+        "sleep_efficiency": float(analytics.sleep_efficiency or 0.0),
+        "sleep_score": float(analytics.sleep_score or 0.0),
+        "movement_std": float(metrics.get("movement_std") or 0.0),
+    }
+    return features, sleep_stages
+
+
 @router.get("/dashboard")
 def get_dashboard(db: DBSession = Depends(get_db)):
     sessions = db.query(SessionModel).order_by(SessionModel.created_at.desc()).all()
@@ -104,19 +141,26 @@ def get_dashboard(db: DBSession = Depends(get_db)):
 
     for s in sessions:
         pred = _latest_prediction(db, s.id)
-        probability = float(pred.probability) if pred and pred.probability is not None else 0.0
+        analytics = _analytics(db, s.id)
+        analytics_features, analytics_stages = _features_from_analytics(analytics)
+        probability = (
+            max(0.0, min(1.0, 1.0 - float(analytics.sleep_score or 0.0) / 100.0))
+            if analytics and analytics.sleep_score is not None
+            else (float(pred.probability) if pred and pred.probability is not None else 0.0)
+        )
         risk_values.append(probability)
 
         feature_row = features_by_sid.get(s.sid, {})
         features = {
-            "HR_mean": feature_row.get("HR_mean", 0.0),
-            "HR_std": feature_row.get("HR_std", 0.0),
+            "HR_mean": analytics_features.get("HR_mean", feature_row.get("HR_mean", 0.0)),
+            "HR_std": analytics_features.get("HR_std", feature_row.get("HR_std", 0.0)),
             "EDA_mean": feature_row.get("EDA_mean", 0.0),
             "TEMP_mean": feature_row.get("TEMP_mean", 0.0),
-            "event_rate": feature_row.get("event_rate", 0.0),
-            "sleep_efficiency": feature_row.get("sleep_efficiency", 0.0),
+            "event_rate": analytics_features.get("event_rate", feature_row.get("event_rate", 0.0)),
+            "sleep_efficiency": analytics_features.get("sleep_efficiency", feature_row.get("sleep_efficiency", 0.0)),
+            "sleep_score": analytics_features.get("sleep_score", 0.0),
         }
-        sleep_stages = feature_row.get(
+        sleep_stages = analytics_stages or feature_row.get(
             "sleepStages",
             {"wake": 0, "n1": 0, "n2": 0, "n3": 0, "rem": 0},
         )
@@ -131,8 +175,8 @@ def get_dashboard(db: DBSession = Depends(get_db)):
                 "date": (s.created_at.isoformat() if s.created_at else None),
                 "duration": int((s.duration_seconds or 0) / 60),
                 "riskProbability": probability,
-                "riskLevel": _risk_level(probability),
-                "status": s.status if s.status in ("completed", "processing", "recording") else "completed",
+                "riskLevel": _risk_level_from_text(analytics.risk_level) if analytics else _risk_level(probability),
+                "status": (analytics.status.lower() if analytics else s.status.lower()) if s.status else "completed",
                 "sleepStages": sleep_stages,
                 "features": features,
             }
@@ -184,7 +228,22 @@ def get_session_detail(sid: str, db: DBSession = Depends(get_db)):
         },
     )
     pred = _latest_prediction(db, s.id)
-    probability = float(pred.probability) if pred and pred.probability is not None else 0.0
+    analytics = _analytics(db, s.id)
+    analytics_features, analytics_stages = _features_from_analytics(analytics)
+    probability = (
+        max(0.0, min(1.0, 1.0 - float(analytics.sleep_score or 0.0) / 100.0))
+        if analytics and analytics.sleep_score is not None
+        else (float(pred.probability) if pred and pred.probability is not None else 0.0)
+    )
+    feature_values = {
+        "HR_mean": analytics_features.get("HR_mean", feature_row["HR_mean"]),
+        "HR_std": analytics_features.get("HR_std", feature_row["HR_std"]),
+        "EDA_mean": feature_row["EDA_mean"],
+        "TEMP_mean": feature_row["TEMP_mean"],
+        "event_rate": analytics_features.get("event_rate", feature_row["event_rate"]),
+        "sleep_efficiency": analytics_features.get("sleep_efficiency", feature_row["sleep_efficiency"]),
+        "sleep_score": analytics_features.get("sleep_score", 0.0),
+    }
 
     return {
         "id": s.sid,
@@ -192,21 +251,18 @@ def get_session_detail(sid: str, db: DBSession = Depends(get_db)):
         "date": (s.created_at.isoformat() if s.created_at else None),
         "duration": int((s.duration_seconds or 0) / 60),
         "riskProbability": probability,
-        "riskLevel": _risk_level(probability),
-        "status": s.status if s.status in ("completed", "processing", "recording") else "completed",
-        "sleepStages": feature_row["sleepStages"],
-        "features": {
-            "HR_mean": feature_row["HR_mean"],
-            "HR_std": feature_row["HR_std"],
-            "EDA_mean": feature_row["EDA_mean"],
-            "TEMP_mean": feature_row["TEMP_mean"],
-            "event_rate": feature_row["event_rate"],
-            "sleep_efficiency": feature_row["sleep_efficiency"],
-        },
+        "riskLevel": _risk_level_from_text(analytics.risk_level) if analytics else _risk_level(probability),
+        "status": (analytics.status.lower() if analytics else s.status.lower()) if s.status else "completed",
+        "sleepStages": analytics_stages or feature_row["sleepStages"],
+        "features": feature_values,
         "prediction": {
-            "label": pred.label if pred else "",
-            "model_name": pred.model_name if pred else None,
-            "recommendations": _safe_json_loads(pred.recommendations_json if pred else None, []),
+            "label": analytics.risk_level if analytics else (pred.label if pred else ""),
+            "model_name": "Spark analytics rule pipeline" if analytics else (pred.model_name if pred else None),
+            "recommendations": (
+                _safe_json_loads(analytics.recommendations_json, [])
+                if analytics
+                else _safe_json_loads(pred.recommendations_json if pred else None, [])
+            ),
             "shap_top_features": _safe_json_loads(pred.shap_features if pred else None, []),
         },
         "reportUrl": f"/api/v1/sessions/{sid}/report",
@@ -246,4 +302,3 @@ def get_models_leaderboard():
             }
         )
     return sorted(out, key=lambda r: r["aucRoc"], reverse=True)
-

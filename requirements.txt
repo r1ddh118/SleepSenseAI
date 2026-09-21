@@ -12,6 +12,7 @@ matplotlib
 pydantic
 pydantic-settings
 SQLAlchemy
-paho-mqtt
 passlib
 python-jose
+pyspark
+pytest
