@@ -1470,14 +1470,22 @@ Observed:
 7. Open the session card and confirm the detail page shows the selected
    session's HR, estimated EDA, hypnogram, sleep stages, and recommendations.
 
-## Next Likely Step
+## Step 16: Comprehensive Master Documentation & Overview
 
-Decide the doctor-alert product policy:
+### What Was Done
 
-- keep all simultaneous persistence alerts, as implemented now; or
-- collapse multiple alerts for the same patient/window into one strongest
-  doctor-facing alert.
+- Updated `README.md` into an exhaustive master documentation guide covering:
+  - Project Purpose ("Why SleepSense AI?")
+  - System Overview ("What is SleepSense AI?")
+  - Complete File Structure & Directory Map
+  - Cross-Platform Setup & Execution Instructions (Linux, macOS, Windows with WSL2 and PowerShell)
+  - PySpark Pipeline execution commands
+  - 4-Terminal Live App Workflow (Redis + Celery + FastAPI + Vite)
+  - REST API endpoint specifications
+  - Automated testing & generated file management
+- Created `PROGRESS.md` as a clean executive progress document and verification summary.
 
-The live smoke currently proves the full stack works, and it also shows why this
-UI/product choice matters: one severe sustained decline can satisfy several
-rules at once.
+### Status
+
+The repository documentation is complete, accurate, and self-contained. Anyone reading the repository docs can understand the complete codebase architecture, pipeline mechanics, and cross-platform setup without inspecting raw code files directly.
+
