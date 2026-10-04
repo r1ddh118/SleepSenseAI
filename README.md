@@ -1,6 +1,102 @@
 # SleepSense AI
 
-SleepSense AI is a multimodal sleep analysis stack: an **OOP Python CLI pipeline** in `src/`, a **FastAPI + Celery backend** in `api/` (Phase 2 + SHAP hooks), and scaffold folders for hardware, frontend, validation, packaging, and advanced work.
+SleepSense AI is a multimodal sleep analysis stack: an **OOP Python CLI pipeline** in `src/`, a **FastAPI + Celery backend** in `api/` (Phase 2 + SHAP hooks), and a **PySpark whole-night sensor pipeline** in `sleepsense_night/`. Scaffold folders for hardware, frontend, validation, packaging, and advanced work are also included.
+
+---
+
+## 🌙 Spark Night Pipeline (`sleepsense_night/`)
+
+A PySpark pipeline that processes one CSV file per user-night (timestamped sensor data) through cleaning → feature engineering → event detection → nightly scoring → trend analysis.
+
+> **Branch:** `spark-implementation`  
+> **Progress:** see [`progress.md`](./progress.md) for step-by-step status.
+
+### Quick Start
+
+```bash
+cd sleepsense_night
+
+# 1. Generate synthetic multi-night data
+python generate_nights.py --users 5 --nights 12 --step 10 --out data/raw
+
+# 2. Run the full pipeline
+python run_pipeline.py --input data/raw --output outputs
+
+# 3. Verify correctness
+python smoke_test.py
+
+# 4. Dataset-level EDA (HTML report)
+python eda.py
+
+# 5. Per-night EDA report
+python eda_night.py --user U003 --date 2026-09-04
+# or process all nights:
+python eda_night.py --all
+
+# 6. Adapt real wearable data (DREAMT / Empatica E4)
+python adapt_sensor_csv.py \
+    --input  raw_exports/ \
+    --output data/raw_adapted/ \
+    --acc-scale 64 \
+    --target-seconds 10
+python run_pipeline.py --input data/raw_adapted --output outputs
+```
+
+### Input Format
+
+Only **three columns are required** in each CSV:
+
+| Column        | Type   | Description                   |
+|---------------|--------|-------------------------------|
+| `timestamp`   | string | ISO 8601 or any parseable TS  |
+| `hr_bpm`      | float  | Heart rate (beats per minute) |
+| `movement_g`  | float  | Acceleration magnitude (g)    |
+
+Optional (richer analytics when present): `user_id`, `night_date`, `spo2_pct`, `resp_rate_bpm`, `skin_temp_c`, `eda_us`, `snore_db`, `ambient_lux`, `device_stage`.
+
+`user_id` and `night_date` are derived from the **file name** (e.g., `U001_2026-09-01.csv`) when absent.
+
+### Pipeline Outputs (`outputs/`)
+
+| File | Description |
+|------|-------------|
+| `epochs.parquet` | Epoch-level data with all features |
+| `events.csv` / `.parquet` | Event timeline (stage segments, awakenings, desats, gaps) |
+| `nightly_metrics.csv` / `.parquet` | One row per night with TST, WASO, efficiency, score … |
+| `doctor_alerts.csv` | Alert streaks of ≥ 3 consecutive high-risk nights |
+| `quality_report.json` | Row counts, duplicates, sensor gaps |
+| `eda_report.html` | Dataset-level EDA charts |
+| `night_reports/*.html` | Per-night HTML with embedded signal figure |
+
+### Pipeline Stages
+
+```
+read_nights → detect_step → clean → add_features → compute_marks
+    → build_events → aggregate_nights → add_score → add_risk_flags
+    → add_trends → doctor_alerts
+```
+
+### File Map
+
+```
+sleepsense_night/
+├── config.py               Column schema, valid ranges, thresholds
+├── generate_nights.py      Synthetic multi-night data generator
+├── run_pipeline.py         End-to-end orchestrator
+├── smoke_test.py           Post-run correctness checks
+├── eda.py                  Dataset-level EDA
+├── eda_night.py            Per-night HTML report
+├── adapt_sensor_csv.py     DREAMT / E4 wearable adapter
+└── pipeline/
+    ├── ingest_clean.py     Read folder of CSVs, derive IDs, clean
+    ├── features.py         Rolling stats, stage inference, onset
+    ├── nightly.py          compute_marks() + aggregate_nights()
+    ├── events.py           Event timeline (stage, wake, desat, gap)
+    ├── scoring.py          Sleep score (0-100) + risk flags
+    └── trends_alerts.py    7/14/30-night MAs + alert streaks
+```
+
+---
 
 ## Target layout
 
