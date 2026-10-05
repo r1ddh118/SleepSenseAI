@@ -1,0 +1,311 @@
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SleepSense AI Report — S003</title>
+  <style>
+    :root {
+      --navy: #16213e;
+      --blue: #0f3460;
+      --red: #e94560;
+      --bg: #f8f9fa;
+      --card-bg: #fff;
+      --text: #212529;
+      --muted: #6c757d;
+      --border: #dee2e6;
+      --success: #198754;
+      --warning: #fd7e14;
+      --danger: #dc3545;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .container { max-width: 960px; margin: 0 auto; padding: 2rem 1rem; }
+    .header {
+      background: linear-gradient(135deg, var(--navy), var(--blue));
+      color: #fff;
+      padding: 2rem;
+      border-radius: 12px;
+      margin-bottom: 1.5rem;
+    }
+    .header h1 { font-size: 1.75rem; }
+    .header .meta { opacity: 0.8; font-size: 0.85rem; margin-top: 0.5rem; }
+    .disclaimer {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 1rem 1.5rem;
+      border-radius: 6px;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+    }
+    .disclaimer strong { display: block; margin-bottom: 0.25rem; }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    }
+    .card h2 {
+      font-size: 1.1rem;
+      color: var(--blue);
+      border-bottom: 2px solid var(--red);
+      padding-bottom: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .score-big {
+      font-size: 4rem;
+      font-weight: 800;
+      color: var(--red);
+      text-align: center;
+      line-height: 1;
+    }
+    .score-label {
+      text-align: center;
+      color: var(--muted);
+      font-size: 1.1rem;
+      margin-top: 0.25rem;
+      margin-bottom: 0.5rem;
+    }
+    .score-note { text-align: center; font-size: 0.78rem; color: var(--muted); }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .metric {
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      text-align: center;
+    }
+    .metric .val { font-size: 1.5rem; font-weight: 700; color: var(--navy); }
+    .metric .label { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid var(--border); padding: 0.6rem 0.85rem; text-align: left; font-size: 0.88rem; }
+    th { background: var(--navy); color: #fff; font-weight: 600; }
+    tr:nth-child(even) { background: #f2f4f7; }
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.65rem;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    .HIGH    { background: #dc3545; color: #fff; }
+    .MODERATE{ background: #fd7e14; color: #fff; }
+    .LOW     { background: #198754; color: #fff; }
+    .severity-critical { background: #f8d7da; border-left: 3px solid #dc3545; }
+    .severity-warning  { background: #fff3cd; border-left: 3px solid #ffc107; }
+    .severity-info     { background: #d1ecf1; border-left: 3px solid #17a2b8; }
+    .severity-ok       { background: #d4edda; border-left: 3px solid #28a745; }
+    .rec-item {
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      margin-bottom: 0.75rem;
+      font-size: 0.88rem;
+    }
+    .rec-item .rec-area { font-weight: 700; font-size: 0.78rem; letter-spacing: .04em; text-transform: uppercase; }
+    .footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+      <div>
+        <h1>🌙 SleepSense AI Analytical Screening Report</h1>
+        <div class="meta" style="margin-top: 6px;">
+          Session: <b>S003</b> &nbsp;|&nbsp;
+          Patient: <b>david@sleepsense.ai</b> &nbsp;|&nbsp;
+          Generated: 2026-10-05T06:27:48.574782Z
+        </div>
+      </div>
+      <div style="background: rgba(255,255,255,0.15); padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); text-align:right;">
+        <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; opacity:0.9;">Analysis Window</div>
+        <div style="font-size:1.05rem; font-weight:700;">1-Week Longitudinal Clinical Profile (7 Days) (1W)</div>
+        <div style="font-size:0.75rem; opacity:0.8;">2026-04-07 → 2026-04-07</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Disclaimer -->
+  <div class="disclaimer">
+    <strong>⚠️ IMPORTANT DISCLAIMER</strong>
+    This report is an analytical screening tool and does not constitute a medical diagnosis. Clinical interpretation should be performed by a qualified healthcare professional.
+  </div>
+
+  <!-- Sleep Summary -->
+  <div class="card">
+    <h2>Sleep Summary — 1-Week Longitudinal Clinical Profile (7 Days)</h2>
+    <div class="score-big">72.0</div>
+    <div class="score-label">Good</div>
+    <div class="score-note">Sleep score is an academic analytics metric only — NOT clinically validated.</div>
+
+    <div class="metrics-grid">
+      <div class="metric">
+        <div class="val">81.0%</div>
+        <div class="label">Sleep Efficiency</div>
+      </div>
+      <div class="metric">
+        <div class="val">7.3h</div>
+        <div class="label">Duration</div>
+      </div>
+      <div class="metric">
+        <div class="val">13%</div>
+        <div class="label">Deep Sleep (N3)</div>
+      </div>
+      <div class="metric">
+        <div class="val">16%</div>
+        <div class="label">REM Sleep</div>
+      </div>
+      <div class="metric">
+        <div class="val">15%</div>
+        <div class="label">Wake Time</div>
+      </div>
+      <div class="metric">
+        <div class="val">68 bpm</div>
+        <div class="label">Avg Heart Rate</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Longitudinal Trend -->
+  <div class="card">
+    <h2>Longitudinal Trajectory (1-Week Longitudinal Clinical Profile (7 Days))</h2>
+    <div class="metrics-grid">
+      <div class="metric">
+        <div class="val">72.0</div>
+        <div class="label">Sleep Score Average</div>
+      </div>
+      <div class="metric">
+        <div class="val">7.3h</div>
+        <div class="label">Duration Average</div>
+      </div>
+      <div class="metric">
+        <div class="val">81.0%</div>
+        <div class="label">Efficiency Average</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Risk Assessment -->
+  
+  <div class="card">
+    <h2>Risk Screening Indicators</h2>
+    <p>
+      <strong>Overall Risk Level:</strong>
+      <span class="badge LOW">LOW</span>
+      
+      &nbsp; <span style="font-weight:600; color:#555;">(Risk Factor: 20%)</span>
+      
+    </p>
+    
+    <br>
+    <table>
+      <tr><th>Category</th><th>Risk</th><th>Evidence</th></tr>
+      
+      <tr>
+        <td>Healthy Sleep Architecture (1W)</td>
+        <td><span class="badge LOW">LOW</span></td>
+        <td>Biometric signals and sleep continuity within normal physiological bounds</td>
+      </tr>
+      
+    </table>
+    
+    <p style="margin-top:0.75rem;font-size:0.8rem;color:#666">
+      ⚠️ Risk levels are screening indicators only — not a medical diagnosis.
+    </p>
+  </div>
+  
+
+  <!-- Lifestyle -->
+  <div class="card">
+    <h2>Lifestyle Factors</h2>
+    <div class="metrics-grid">
+      <div class="metric">
+        <div class="val">40 mg</div>
+        <div class="label">Caffeine</div>
+      </div>
+      <div class="metric">
+        <div class="val">25 min</div>
+        <div class="label">Screen Time</div>
+      </div>
+      <div class="metric">
+        <div class="val">35 min</div>
+        <div class="label">Exercise</div>
+      </div>
+      <div class="metric">
+        <div class="val">4/10</div>
+        <div class="label">Stress Level</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recommendations -->
+  
+  <div class="card">
+    <h2>Personalised Recommendations</h2>
+    
+    <div class="rec-item severity-info">
+      <div class="rec-area">Longitudinal Clinical Profile</div>
+      <div>7-day longitudinal screening shows persistent low risk patterns (81.0% efficiency average). Recommend clinical review.</div>
+      <div style="font-size:0.75rem;color:#888;margin-top:0.25rem">Triggered by: 7-day database trend</div>
+    </div>
+    
+    <div class="rec-item severity-info">
+      <div class="rec-area">Sleep Consistency</div>
+      <div>Keep sleep and wake times within 30 minutes variance across weekdays and weekends.</div>
+      <div style="font-size:0.75rem;color:#888;margin-top:0.25rem">Triggered by: 7-day longitudinal schedule variance</div>
+    </div>
+    
+  </div>
+  
+
+  <!-- Model Info -->
+  <div class="card">
+    <h2>Model & Methodology</h2>
+    <table>
+      <tr><th>Field</th><th>Value</th></tr>
+      <tr><td>Scoring Model</td><td>SleepSense AI Analytics (v2.0, PySpark) [1-Week Longitudinal Clinical Profile (7 Days)]</td></tr>
+      <tr><td>ML Evaluation Methodology</td><td>Any ML model metrics reported use a user-level train/test split (no user appears in both training and test sets). This methodology is described explicitly to prevent data-leakage inflation.</td></tr>
+      <tr><td>Clinically Validated</td><td>No — academic analytics tool only</td></tr>
+    </table>
+  </div>
+
+  <!-- Footer Disclaimer -->
+  <div class="disclaimer">
+    <strong>⚠️ FINAL DISCLAIMER</strong>
+    This report is an analytical screening tool and does not constitute a medical diagnosis. Clinical interpretation should be performed by a qualified healthcare professional.
+  </div>
+
+  <div class="footer">
+    SleepSense AI — Academic PySpark Sleep Analytics Platform · Report generated 2026-10-05T06:27:48.574782Z
+  </div>
+
+</div>
+</body>
+</html>

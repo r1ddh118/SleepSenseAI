@@ -1,13 +1,33 @@
 import type { RiskLevel } from "../data/mockData";
 
 interface RiskBadgeProps {
-  probability: number;
+  probability?: number;
+  risk?: RiskLevel | string;
   size?: "sm" | "md" | "lg";
+  showPercentage?: boolean;
 }
 
-export function RiskBadge({ probability, size = "md" }: RiskBadgeProps) {
-  const level: RiskLevel =
-    probability < 0.3 ? "low" : probability < 0.65 ? "moderate" : "high";
+export function RiskBadge({ probability, risk, size = "md", showPercentage = true }: RiskBadgeProps) {
+  // Determine risk level safely from probability or risk string
+  let level: RiskLevel = "low";
+  let probVal = 0.15;
+
+  if (typeof probability === "number" && !isNaN(probability)) {
+    probVal = Math.max(0, Math.min(1, probability));
+    level = probVal < 0.35 ? "low" : probVal < 0.7 ? "moderate" : "high";
+  } else if (typeof risk === "string") {
+    const lower = risk.toLowerCase();
+    if (lower.includes("high")) {
+      level = "high";
+      probVal = 0.78;
+    } else if (lower.includes("mod")) {
+      level = "moderate";
+      probVal = 0.52;
+    } else {
+      level = "low";
+      probVal = 0.18;
+    }
+  }
 
   const colorClasses = {
     low: "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-300 dark:border-green-700",
@@ -16,14 +36,16 @@ export function RiskBadge({ probability, size = "md" }: RiskBadgeProps) {
   };
 
   const sizeClasses = {
-    sm: "text-xs px-2 py-0.5",
+    sm: "text-xs px-2.5 py-0.5",
     md: "text-sm px-3 py-1",
     lg: "text-base px-4 py-2",
   };
 
+  const percentageStr = (probVal * 100).toFixed(0);
+
   return (
     <span
-      className={`inline-flex items-center gap-2 rounded-full border font-medium ${colorClasses[level]} ${sizeClasses[size]}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border font-semibold tracking-wide ${colorClasses[level]} ${sizeClasses[size]}`}
     >
       <span
         className={`w-2 h-2 rounded-full ${
@@ -31,10 +53,11 @@ export function RiskBadge({ probability, size = "md" }: RiskBadgeProps) {
             ? "bg-green-500 dark:bg-green-400"
             : level === "moderate"
             ? "bg-amber-500 dark:bg-amber-400"
-            : "bg-red-500 dark:bg-red-400"
+            : "bg-red-500 dark:bg-red-400 animate-pulse"
         }`}
       />
-      {level.toUpperCase()} RISK ({(probability * 100).toFixed(0)}%)
+      <span>{level.toUpperCase()} RISK</span>
+      {showPercentage && <span className="opacity-80 font-mono text-xs font-normal">({percentageStr}%)</span>}
     </span>
   );
 }

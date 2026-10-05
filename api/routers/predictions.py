@@ -148,38 +148,7 @@ def get_predictions(
     return out
 
 
-@router.get("/sessions/{sid}/report")
-def download_report(
-    sid: str,
-    db: DBSession = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    session = db.query(SessionModel).filter(SessionModel.sid == sid).first()
-    if not session:
-        raise HTTPException(404, f"Session '{sid}' not found")
-    if current_user.role not in ("clinician", "admin"):
-        if session.user_id != current_user.id:
-            raise HTTPException(404, f"Session '{sid}' not found")
 
-    per_session = settings.artifacts_path / f"predictions_{sid}.csv"
-    if per_session.exists():
-        return FileResponse(
-            path=str(per_session),
-            media_type="text/csv",
-            filename=f"sleepsense_report_{sid}.csv",
-        )
-
-    legacy = settings.artifacts_path / "predictions.csv"
-    if legacy.exists():
-        return FileResponse(
-            path=str(legacy),
-            media_type="text/csv",
-            filename=f"sleepsense_report_{sid}.csv",
-        )
-
-    raise HTTPException(
-        404, "Predictions CSV not found — run predict for this session first"
-    )
 
 
 @router.get("/sessions/{sid}/trend")

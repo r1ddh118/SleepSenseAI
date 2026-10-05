@@ -1,0 +1,81 @@
+{
+  "meta": {
+    "report_generated_at": "2026-10-05T06:25:18.024072Z",
+    "session_id": "S001",
+    "user_id": "alex@sleepsense.ai",
+    "timeframe": "1w",
+    "timeframe_label": "1-Week Longitudinal Clinical Profile (7 Days)",
+    "period_start": "2026-04-09",
+    "period_end": "2026-04-09",
+    "report_type": "SleepSense AI \u2014 1-Week Longitudinal Clinical Profile (7 Days) Report"
+  },
+  "patient_info": {
+    "user_id": "alex@sleepsense.ai"
+  },
+  "sleep_summary": {
+    "timeframe": "1w",
+    "timeframe_label": "1-Week Longitudinal Clinical Profile (7 Days)",
+    "sleep_score": 92.5,
+    "sleep_category": "Optimal",
+    "sleep_efficiency": 92.5,
+    "sleep_duration_hours": 8.0,
+    "n3_fraction": 0.18,
+    "rem_fraction": 0.14,
+    "wake_fraction": 0.08,
+    "avg_hr": 62.3,
+    "hr_std": 8.2,
+    "avg_movement": null,
+    "event_rate": 0.02,
+    "awakenings": null,
+    "score_disclaimer": "Sleep score is an academic analytics metric only \u2014 NOT clinically validated."
+  },
+  "longitudinal_trend": {
+    "sleep_score_7d_avg": 92.5,
+    "sleep_score_14d_avg": 92.5,
+    "duration_7d_avg": 8.0,
+    "efficiency_7d_avg": 92.5
+  },
+  "risk_assessment": {
+    "overall_risk_level": "LOW",
+    "probability": 0.2,
+    "risk_flags": [
+      {
+        "label": "Healthy Sleep Architecture (1W)",
+        "risk": "LOW",
+        "probability": 0.2,
+        "reasons": [
+          "Biometric signals and sleep continuity within normal physiological bounds"
+        ]
+      }
+    ],
+    "disclaimer": "Risk levels are screening indicators only \u2014 not a medical diagnosis."
+  },
+  "lifestyle": {
+    "caffeine_mg": 40,
+    "screen_time_min": 25,
+    "exercise_min": 35,
+    "stress_level": 4,
+    "nap_minutes": 0
+  },
+  "recommendations": [
+    {
+      "area": "Longitudinal Clinical Profile",
+      "message": "7-day longitudinal screening shows persistent low risk patterns (92.5% efficiency average). Recommend clinical review.",
+      "severity": "info",
+      "triggered_by": "7-day database trend"
+    },
+    {
+      "area": "Sleep Consistency",
+      "message": "Keep sleep and wake times within 30 minutes variance across weekdays and weekends.",
+      "severity": "info",
+      "triggered_by": "7-day longitudinal schedule variance"
+    }
+  ],
+  "alerts": [],
+  "model_info": {
+    "scoring_model": "SleepSense AI Analytics (v2.0, PySpark) [1-Week Longitudinal Clinical Profile (7 Days)]",
+    "evaluation_note": "Any ML model metrics reported use a user-level train/test split (no user appears in both training and test sets). This methodology is described explicitly to prevent data-leakage inflation.",
+    "not_clinically_validated": true
+  },
+  "disclaimer": "This report is an analytical screening tool and does not constitute a medical diagnosis. Clinical interpretation should be performed by a qualified healthcare professional."
+}

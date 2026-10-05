@@ -63,3 +63,25 @@ def require_clinician(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role not in ("clinician", "admin"):
         raise HTTPException(status_code=403, detail="Clinician access required")
     return current_user
+
+
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+
+def get_optional_current_user(
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: DBSession = Depends(get_db),
+) -> Optional[User]:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(
+            token, settings.secret_key, algorithms=[settings.algorithm]
+        )
+        email: str | None = payload.get("sub")
+        if email:
+            return db.query(User).filter(User.email == email).first()
+    except Exception:
+        return None
+    return None
+

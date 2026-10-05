@@ -13,9 +13,11 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "api"))
 
-from api.database import SessionLocal, init_db
+from database import SessionLocal, init_db
 
 init_db()
 db = SessionLocal()
@@ -37,7 +39,7 @@ NIGHTS = [
 print(f"Seeding U034 with {len(NIGHTS)} declining sleep nights...")
 
 try:
-    from api.models_db import SleepAnalytics, ManualSleepSession, DoctorAlert
+    from models_db import SleepAnalytics, ManualSleepSession, DoctorAlert
 
     for i, night_data in enumerate(NIGHTS):
         date_str = (BASE_DATE + timedelta(days=i)).strftime("%Y-%m-%d")

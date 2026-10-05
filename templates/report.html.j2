@@ -135,12 +135,20 @@
 
   <!-- Header -->
   <div class="header">
-    <h1>🌙 SleepSense AI Analytical Screening Report</h1>
-    <div class="meta">
-      Session: {{ meta.session_id }} &nbsp;|&nbsp;
-      Patient: {{ meta.user_id }} &nbsp;|&nbsp;
-      Date: {{ meta.period_end or "N/A" }} &nbsp;|&nbsp;
-      Generated: {{ meta.report_generated_at }}
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+      <div>
+        <h1>🌙 SleepSense AI Analytical Screening Report</h1>
+        <div class="meta" style="margin-top: 6px;">
+          Session: <b>{{ meta.session_id }}</b> &nbsp;|&nbsp;
+          Patient: <b>{{ meta.user_id }}</b> &nbsp;|&nbsp;
+          Generated: {{ meta.report_generated_at }}
+        </div>
+      </div>
+      <div style="background: rgba(255,255,255,0.15); padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); text-align:right;">
+        <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; opacity:0.9;">Analysis Window</div>
+        <div style="font-size:1.05rem; font-weight:700;">{{ meta.timeframe_label or meta.timeframe }} ({{ meta.timeframe|upper }})</div>
+        <div style="font-size:0.75rem; opacity:0.8;">{{ meta.period_start or 'N/A' }} → {{ meta.period_end or 'N/A' }}</div>
+      </div>
     </div>
   </div>
 
@@ -152,14 +160,14 @@
 
   <!-- Sleep Summary -->
   <div class="card">
-    <h2>Sleep Summary</h2>
+    <h2>Sleep Summary — {{ meta.timeframe_label }}</h2>
     <div class="score-big">{{ ss.sleep_score | round(1) if ss.sleep_score else 'N/A' }}</div>
     <div class="score-label">{{ ss.sleep_category or '' }}</div>
     <div class="score-note">{{ ss.score_disclaimer }}</div>
 
     <div class="metrics-grid">
       <div class="metric">
-        <div class="val">{{ "%.0f%%"|format((ss.sleep_efficiency or 0) * 100) }}</div>
+        <div class="val">{{ "%.1f%%"|format(ss.sleep_efficiency) if (ss.sleep_efficiency and ss.sleep_efficiency > 1.0) else "%.1f%%"|format((ss.sleep_efficiency or 0) * 100) }}</div>
         <div class="label">Sleep Efficiency</div>
       </div>
       <div class="metric">
@@ -167,15 +175,15 @@
         <div class="label">Duration</div>
       </div>
       <div class="metric">
-        <div class="val">{{ "%.0f%%"|format((ss.n3_fraction or 0) * 100) }}</div>
+        <div class="val">{{ "%.0f%%"|format((ss.n3_fraction or 0) * 100) if (ss.n3_fraction and ss.n3_fraction <= 1.0) else "%.0f%%"|format(ss.n3_fraction or 0) }}</div>
         <div class="label">Deep Sleep (N3)</div>
       </div>
       <div class="metric">
-        <div class="val">{{ "%.0f%%"|format((ss.rem_fraction or 0) * 100) }}</div>
+        <div class="val">{{ "%.0f%%"|format((ss.rem_fraction or 0) * 100) if (ss.rem_fraction and ss.rem_fraction <= 1.0) else "%.0f%%"|format(ss.rem_fraction or 0) }}</div>
         <div class="label">REM Sleep</div>
       </div>
       <div class="metric">
-        <div class="val">{{ "%.0f%%"|format((ss.wake_fraction or 0) * 100) }}</div>
+        <div class="val">{{ "%.0f%%"|format((ss.wake_fraction or 0) * 100) if (ss.wake_fraction and ss.wake_fraction <= 1.0) else "%.0f%%"|format(ss.wake_fraction or 0) }}</div>
         <div class="label">Wake Time</div>
       </div>
       <div class="metric">
@@ -187,19 +195,19 @@
 
   <!-- Longitudinal Trend -->
   <div class="card">
-    <h2>7-Day Trend</h2>
+    <h2>Longitudinal Trajectory ({{ meta.timeframe_label }})</h2>
     <div class="metrics-grid">
       <div class="metric">
         <div class="val">{{ "%.1f"|format(lt.sleep_score_7d_avg or 0) }}</div>
-        <div class="label">Sleep Score (7d avg)</div>
+        <div class="label">Sleep Score Average</div>
       </div>
       <div class="metric">
         <div class="val">{{ "%.1fh"|format(lt.duration_7d_avg or 0) }}</div>
-        <div class="label">Duration (7d avg)</div>
+        <div class="label">Duration Average</div>
       </div>
       <div class="metric">
-        <div class="val">{{ "%.0f%%"|format((lt.efficiency_7d_avg or 0) * 100) }}</div>
-        <div class="label">Efficiency (7d avg)</div>
+        <div class="val">{{ "%.1f%%"|format(lt.efficiency_7d_avg) if (lt.efficiency_7d_avg and lt.efficiency_7d_avg > 1.0) else "%.1f%%"|format((lt.efficiency_7d_avg or 0) * 100) }}</div>
+        <div class="label">Efficiency Average</div>
       </div>
     </div>
   </div>
@@ -211,6 +219,9 @@
     <p>
       <strong>Overall Risk Level:</strong>
       <span class="badge {{ ra.overall_risk_level or 'LOW' }}">{{ ra.overall_risk_level or 'LOW' }}</span>
+      {% if ra.probability %}
+      &nbsp; <span style="font-weight:600; color:#555;">(Risk Factor: {{ "%.0f%%"|format(ra.probability * 100) }})</span>
+      {% endif %}
     </p>
     {% if ra.risk_flags %}
     <br>

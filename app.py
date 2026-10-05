@@ -59,17 +59,26 @@ class Launcher:
         self.procs: list[ManagedProcess] = []
 
     def _python(self) -> str:
+        venv_py = ROOT / ".venv" / "bin" / "python"
+        if venv_py.exists():
+            return str(venv_py)
         return sys.executable
 
     def _env(self) -> dict[str, str]:
         env = os.environ.copy()
         root_str = str(ROOT)
-        env["PYTHONPATH"] = f"{root_str}:{env.get('PYTHONPATH', '')}".rstrip(":")
+        env["PYTHONPATH"] = f"{root_str}:{root_str}/api:{env.get('PYTHONPATH', '')}".rstrip(":")
+        venv_bin = ROOT / ".venv" / "bin"
+        if venv_bin.exists():
+            env["PATH"] = f"{venv_bin}:{env.get('PATH', '')}"
         return env
 
-    def _ensure_binary(self, name: str, help_text: str) -> None:
-        if shutil.which(name) is None:
+    def _ensure_binary(self, name: str, help_text: str) -> str:
+        env = self._env()
+        bin_path = shutil.which(name, path=env.get("PATH"))
+        if bin_path is None:
             raise RuntimeError(f"Required executable '{name}' not found. {help_text}")
+        return bin_path
 
     def _add(self, name: str, command: list[str], cwd: Path | None = None) -> None:
         self.procs.append(
@@ -93,16 +102,33 @@ class Launcher:
             )
 
     def build(self) -> None:
-        if self.args.with_redis:
-            self._ensure_port_available("Redis", "127.0.0.1", 6379, "--no-redis")
+        env = self._env()
 
+        # Check Redis
+        redis_port_free = self._port_is_available("127.0.0.1", 6379)
+        if self.args.with_redis:
+            if not redis_port_free:
+                print("[info] Redis port 6379 is already in use (using existing Redis service).")
+            else:
+                redis_bin = shutil.which("redis-server", path=env.get("PATH"))
+                if redis_bin:
+                    self._add("redis", [redis_bin])
+                else:
+                    print("[warning] redis-server not found locally. Running with existing/external Redis if available.")
+
+        # Check Mosquitto
         if self.args.with_mqtt:
-            self._ensure_port_available(
-                "Mosquitto",
-                "127.0.0.1",
-                self.args.mqtt_port,
-                f"--mqtt-port {self.args.mqtt_port + 1}",
-            )
+            mqtt_bin = shutil.which("mosquitto", path=env.get("PATH"))
+            if mqtt_bin:
+                self._ensure_port_available(
+                    "Mosquitto",
+                    "127.0.0.1",
+                    self.args.mqtt_port,
+                    f"--mqtt-port {self.args.mqtt_port + 1}",
+                )
+                self._add("mosquitto", [mqtt_bin, "-p", str(self.args.mqtt_port)])
+            else:
+                print("[info] Mosquitto broker not found on PATH; skipping MQTT broker.")
 
         api_bind_host = self.args.api_host
         if api_bind_host == "0.0.0.0":
@@ -114,30 +140,18 @@ class Launcher:
             f"--api-port {self.args.api_port + 1}",
         )
 
-        if self.args.with_redis:
-            self._ensure_binary("redis-server", "Install Redis or run with --no-redis.")
-            self._add("redis", ["redis-server"])
-
-        if self.args.with_mqtt:
-            self._ensure_binary(
-                "mosquitto",
-                "Install Mosquitto broker or run with --no-mqtt.",
-            )
-            mqtt_cmd = ["mosquitto", "-p", str(self.args.mqtt_port)]
-            self._add("mosquitto", mqtt_cmd)
-
-        self._ensure_binary("celery", "Install API dependencies in your active environment.")
+        celery_bin = self._ensure_binary("celery", "Install API dependencies in your active environment.")
         self._add(
             "celery-worker",
-            ["celery", "-A", "tasks", "worker", "--loglevel=info"],
+            [celery_bin, "-A", "tasks", "worker", "--loglevel=info"],
             cwd=ROOT / "api",
         )
 
-        self._ensure_binary("uvicorn", "Install API dependencies in your active environment.")
+        uvicorn_bin = self._ensure_binary("uvicorn", "Install API dependencies in your active environment.")
         self._add(
             "fastapi",
             [
-                "uvicorn",
+                uvicorn_bin,
                 "main:app",
                 "--host",
                 self.args.api_host,

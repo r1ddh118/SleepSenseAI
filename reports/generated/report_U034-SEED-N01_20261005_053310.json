@@ -1,0 +1,56 @@
+{
+  "meta": {
+    "report_generated_at": "2026-10-05T05:33:10.461382Z",
+    "session_id": "U034-SEED-N01",
+    "user_id": "U034",
+    "period_start": null,
+    "period_end": "2025-09-01",
+    "report_type": "SleepSense AI Analytical Screening Report"
+  },
+  "patient_info": {
+    "user_id": "U034"
+  },
+  "sleep_summary": {
+    "sleep_score": 65.0,
+    "sleep_category": "Fair",
+    "sleep_efficiency": 0.9,
+    "sleep_duration_hours": 7.0,
+    "n3_fraction": 0.18,
+    "rem_fraction": 0.2,
+    "wake_fraction": 0.1,
+    "avg_hr": 65.0,
+    "hr_std": 5.0,
+    "avg_movement": null,
+    "event_rate": 0.01,
+    "awakenings": null,
+    "score_disclaimer": "Sleep score is an academic analytics metric only \u2014 NOT clinically validated."
+  },
+  "longitudinal_trend": {
+    "sleep_score_7d_avg": 65.0,
+    "sleep_score_14d_avg": 65.0,
+    "duration_7d_avg": 7.0,
+    "efficiency_7d_avg": null
+  },
+  "risk_assessment": {
+    "overall_risk_level": "LOW",
+    "risk_flags": [],
+    "evidence": [
+      "Auto-seeded declining night 1"
+    ]
+  },
+  "lifestyle": {
+    "caffeine_mg": 0,
+    "screen_time_min": 30,
+    "exercise_min": 45,
+    "stress_level": 4,
+    "nap_minutes": 0
+  },
+  "recommendations": [],
+  "alerts": [],
+  "model_info": {
+    "scoring_model": "SleepSense AI Rule-Based Analytics (v2.0, PySpark)",
+    "evaluation_note": "Any ML model metrics reported use a user-level train/test split (no user appears in both training and test sets). This methodology is described explicitly to prevent data-leakage inflation.",
+    "not_clinically_validated": true
+  },
+  "disclaimer": "This report is an analytical screening tool and does not constitute a medical diagnosis. Clinical interpretation should be performed by a qualified healthcare professional."
+}

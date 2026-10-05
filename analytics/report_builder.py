@@ -29,6 +29,15 @@ MEDICAL_DISCLAIMER = (
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 
 
+TIMEFRAME_LABELS = {
+    "12h": "12-Hour Acute Overnight Screening",
+    "24h": "24-Hour Diurnal & Circadian Analysis",
+    "3d": "3-Day Acute Multi-Night Trajectory",
+    "1w": "1-Week Longitudinal Clinical Profile (7 Days)",
+    "7d": "1-Week Longitudinal Clinical Profile (7 Days)",
+}
+
+
 def _build_report_data(
     session_id: str,
     user_id: str,
@@ -40,19 +49,25 @@ def _build_report_data(
     patient_info: dict[str, Any] | None = None,
     period_start: str | None = None,
     period_end: str | None = None,
+    timeframe: str = "24h",
 ) -> dict[str, Any]:
     """Assemble the full report data structure."""
+    tf_label = TIMEFRAME_LABELS.get(timeframe.lower(), "Standard Sleep Analysis Window")
     return {
         "meta": {
             "report_generated_at": datetime.utcnow().isoformat() + "Z",
             "session_id": session_id,
             "user_id": user_id,
+            "timeframe": timeframe,
+            "timeframe_label": tf_label,
             "period_start": period_start,
             "period_end": period_end or sleep_metrics.get("date"),
-            "report_type": "SleepSense AI Analytical Screening Report",
+            "report_type": f"SleepSense AI — {tf_label} Report",
         },
         "patient_info": patient_info or {"user_id": user_id},
         "sleep_summary": {
+            "timeframe": timeframe,
+            "timeframe_label": tf_label,
             "sleep_score": sleep_metrics.get("sleep_score"),
             "sleep_category": sleep_metrics.get("sleep_category"),
             "sleep_efficiency": sleep_metrics.get("sleep_efficiency"),
@@ -86,7 +101,7 @@ def _build_report_data(
         "recommendations": recommendations or [],
         "alerts": alerts or [],
         "model_info": {
-            "scoring_model": "SleepSense AI Rule-Based Analytics (v2.0, PySpark)",
+            "scoring_model": f"SleepSense AI Analytics (v2.0, PySpark) [{tf_label}]",
             "evaluation_note": (
                 "Any ML model metrics reported use a user-level train/test split "
                 "(no user appears in both training and test sets). "
@@ -107,6 +122,7 @@ def build_json_report(
     """Return a JSON string report."""
     data = _build_report_data(session_id, user_id, sleep_metrics, **kwargs)
     return json.dumps(data, indent=2, default=str)
+
 
 
 def build_csv_report(

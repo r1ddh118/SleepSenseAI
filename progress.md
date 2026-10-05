@@ -125,40 +125,54 @@ implemented inside `sleepsense_night/`.
   python run_pipeline.py --input data/raw_adapted --output outputs
   ```
 
+### Step 15 — Full-Stack Multi-Timeframe Analytics & Dynamic Reporting (`v2.0`) ✅ 🆕
+- **Fixed High Risk (NaN) Display Bug**:
+  - Root cause: `RiskBadge.tsx` computed `(probability * 100).toFixed(0)` when `probability` was passed as undefined.
+  - Solution: Updated `RiskBadge.tsx` to handle both `probability: number` and `risk: "low" | "moderate" | "high"` strings with concrete fallback calculations.
+- **SQLite Database Population (`sleepsense.db`)**:
+  - Seeded clinical cohort data for demo users and patient `U034` across 7 consecutive nights (`2025-09-01` through `2025-09-07`).
+- **Multi-Timeframe Analytics API (`api/routers/analytics_router.py`)**:
+  - Implemented `GET /api/v1/sessions/{session_id}/timeframe-analysis?timeframe={12h|24h|3d|1w}`.
+  - Computes window-specific metrics, sleep stage architecture, diurnal hourly traces (12h/24h), and multi-night trajectory progression (3d/1w).
+- **Dynamic Medical Report Generation (`api/routers/reports.py` & `analytics/report_builder.py`)**:
+  - Added `timeframe` query parameter support (`12h`, `24h`, `3d`, `1w`).
+  - Reports dynamically query `sleepsense.db` for the active timeframe window and compile tailored clinical recommendations, risk assessments, and stage distributions.
+  - Supported formats: **Interactive HTML** (`.html`), **CSV Spreadsheet** (`.csv`), and **JSON Structured Data** (`.json`).
+  - Updated `templates/report.html.j2` with analysis window banner, period dates, risk factor percentage, and formatted longitudinal averages.
+- **Interactive Dashboards (`SessionDetail.tsx`, `DoctorDashboard.tsx`, `PatientDashboard.tsx`)**:
+  - Added interactive timeframe selector toolbars: `[ 🌙 12 Hours | ☀️ 24 Hours | 📊 3 Days | 📈 1 Week ]`.
+  - Dynamically renders diurnal physiological curves for 12h/24h vs multi-night trajectory bar charts for 3d/1w.
+  - Integrated direct 1-click report export menus passing the active timeframe parameter.
+
 ---
 
-## 🔄 Pending
+## 🔄 Pending / Next Steps
 
-### Step 15 — App Integration
+### App Data Sync & Wearable Upload
 - Backend: add `POST /api/v1/nights/upload` (validates header, queues Celery job).
 - Results: `GET /nights/{user_id}/{night_date}/events` (reads `events.csv`).
 - Frontend: replace manual-entry form with CSV multi-upload.
-- **Start only after Step 11 passes on your own data.**
 
 ---
 
-## Running the Pipeline
+## Running the Stack & Endpoints
 
 ```bash
-# 1. Generate synthetic data
-cd sleepsense_night
-python generate_nights.py --users 5 --nights 12 --step 10 --out data/raw
+# 1. Start full SleepSense AI application stack (Backend + Frontend)
+.venv/bin/python app.py
 
-# 2. Run the pipeline
-python run_pipeline.py --input data/raw --output outputs
+# 2. Access Web Dashboard
+# Frontend URL: http://localhost:5173
+# Backend API:  http://localhost:8000/docs
 
-# 3. Verify
-python smoke_test.py
+# 3. Test Multi-Timeframe Analysis API
+curl "http://localhost:8000/api/v1/sessions/S001/timeframe-analysis?timeframe=12h"
+curl "http://localhost:8000/api/v1/sessions/U034-SEED-N01/timeframe-analysis?timeframe=1w"
 
-# 4. Dataset EDA
-python eda.py
-
-# 5. Per-night report
-python eda_night.py --user U003 --date 2026-09-04
-
-# 6. Adapt real wearable data
-python adapt_sensor_csv.py --input raw_exports/ --output data/raw_adapted/ --target-seconds 10
-python run_pipeline.py --input data/raw_adapted --output outputs
+# 4. Generate & Download Timeframe Reports
+curl "http://localhost:8000/api/v1/sessions/U034-SEED-N01/report?format=html&timeframe=1w"
+curl "http://localhost:8000/api/v1/sessions/S001/report?format=csv&timeframe=3d"
+curl "http://localhost:8000/api/v1/sessions/S001/report?format=json&timeframe=24h"
 ```
 
 ---
@@ -166,21 +180,25 @@ python run_pipeline.py --input data/raw_adapted --output outputs
 ## File Map
 
 ```
-sleepsense_night/
-├── config.py               Step 1  – reduced REQUIRED_COLUMNS
-├── generate_nights.py      Step 2  – synthetic data generator
-├── run_pipeline.py         Step 10 – orchestrator (wires events.py)
-├── smoke_test.py           Step 11 – with event reconciliation
-├── eda.py                  Step 13 – dataset EDA + events timing
-├── eda_night.py            Step 12 – per-night HTML report  [NEW]
-├── adapt_sensor_csv.py     Step 14 – wearable CSV adapter   [NEW]
-└── pipeline/
-    ├── __init__.py
-    ├── spark_utils.py
-    ├── ingest_clean.py     Steps 3-4 – read folder, derive IDs, is_gap_after
-    ├── features.py         Step 5  – HR-only fallbacks, stage_run_id
-    ├── nightly.py          Step 6  – compute_marks(), NULL-guarded SpO₂
-    ├── events.py           Step 7  – event timeline          [NEW]
-    ├── scoring.py          Step 8  – _b(), sdb_level, NULL-safe ODI
-    └── trends_alerts.py    Step 9  – unchanged
+SleepSenseAI/
+├── api/
+│   ├── routers/
+│   │   ├── analytics_router.py   – Timeframe analysis endpoint (12h, 24h, 3d, 1w)
+│   │   ├── reports.py            – Dynamic report generation (HTML, CSV, JSON)
+│   │   ├── sessions.py           – Session CRUD & manual logging
+│   │   └── doctor_router.py      – Doctor alerts & patient overview
+├── analytics/
+│   ├── report_builder.py         – Report assembler with timeframe metadata
+├── templates/
+│   └── report.html.j2            – Jinja2 HTML report template with timeframe badge
+├── frontend/
+│   └── src/app/
+│       ├── components/
+│       │   └── RiskBadge.tsx     – Safe risk percentage rendering (zero NaN)
+│       └── pages/
+│           ├── SessionDetail.tsx – Multi-timeframe selector, charts & exports
+│           ├── DoctorDashboard.tsx – Clinical population timeframe analyzer
+│           └── PatientDashboard.tsx – Patient timeframe trend portal
+├── sleepsense.db                 – SQLite database seeded with 7-night longitudinal data
+└── progress.md                   – Project roadmap and implementation tracker
 ```

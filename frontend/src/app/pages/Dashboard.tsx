@@ -12,13 +12,10 @@ export function Dashboard() {
   const { user, logout } = useAuth();
 
   // Route to appropriate dashboard based on role
-  if (user?.role === "doctor") {
+  if (user?.role === "doctor" || user?.role === "clinician" || user?.role === "admin") {
     return <DoctorDashboard />;
   }
 
-  if (user?.role === "patient") {
-    return <PatientDashboard />;
-  }
-
-  // Default dashboard for demo/admin users
+  // Default dashboard for patients and users
+  return <PatientDashboard />;
 }

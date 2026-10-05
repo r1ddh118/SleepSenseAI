@@ -1,0 +1,83 @@
+{
+  "meta": {
+    "report_generated_at": "2026-10-05T06:25:22.247062Z",
+    "session_id": "U034-SEED-N01",
+    "user_id": "U034",
+    "timeframe": "3d",
+    "timeframe_label": "3-Day Acute Multi-Night Trajectory",
+    "period_start": "2025-09-05",
+    "period_end": "2025-09-07",
+    "report_type": "SleepSense AI \u2014 3-Day Acute Multi-Night Trajectory Report"
+  },
+  "patient_info": {
+    "user_id": "U034"
+  },
+  "sleep_summary": {
+    "timeframe": "3d",
+    "timeframe_label": "3-Day Acute Multi-Night Trajectory",
+    "sleep_score": 38.3,
+    "sleep_category": "Poor",
+    "sleep_efficiency": 67.7,
+    "sleep_duration_hours": 6.0,
+    "n3_fraction": 0.053,
+    "rem_fraction": 0.09,
+    "wake_fraction": 0.3,
+    "avg_hr": 72.5,
+    "hr_std": 7.5,
+    "avg_movement": null,
+    "event_rate": 0.065,
+    "awakenings": null,
+    "score_disclaimer": "Sleep score is an academic analytics metric only \u2014 NOT clinically validated."
+  },
+  "longitudinal_trend": {
+    "sleep_score_7d_avg": 38.3,
+    "sleep_score_14d_avg": 38.3,
+    "duration_7d_avg": 6.0,
+    "efficiency_7d_avg": 67.7
+  },
+  "risk_assessment": {
+    "overall_risk_level": "HIGH",
+    "probability": 0.82,
+    "risk_flags": [
+      {
+        "label": "Sleep Apnea & Fragmentation Risk (3D)",
+        "risk": "HIGH",
+        "probability": 0.82,
+        "reasons": [
+          "Reduced sleep efficiency (67.7%) across 3-Day Multi-Night Acute Trajectory",
+          "Elevated apnea event rate (6.5%)",
+          "Sub-optimal N3 slow-wave deep sleep fraction (5.3%)"
+        ]
+      }
+    ],
+    "disclaimer": "Risk levels are screening indicators only \u2014 not a medical diagnosis."
+  },
+  "lifestyle": {
+    "caffeine_mg": 40,
+    "screen_time_min": 25,
+    "exercise_min": 35,
+    "stress_level": 4,
+    "nap_minutes": 0
+  },
+  "recommendations": [
+    {
+      "area": "Multi-Night Recovery",
+      "message": "Accumulated sleep debt detected across 3-night trajectory (6.0h avg). Prioritize an earlier bedtime.",
+      "severity": "warning",
+      "triggered_by": "3-day trajectory aggregation"
+    },
+    {
+      "area": "Deep Sleep Optimization",
+      "message": "Avoid high-intensity exercise within 3 hours before sleep to support deep N3 restoration.",
+      "severity": "info",
+      "triggered_by": "3-day restorative phase profile"
+    }
+  ],
+  "alerts": [],
+  "model_info": {
+    "scoring_model": "SleepSense AI Analytics (v2.0, PySpark) [3-Day Acute Multi-Night Trajectory]",
+    "evaluation_note": "Any ML model metrics reported use a user-level train/test split (no user appears in both training and test sets). This methodology is described explicitly to prevent data-leakage inflation.",
+    "not_clinically_validated": true
+  },
+  "disclaimer": "This report is an analytical screening tool and does not constitute a medical diagnosis. Clinical interpretation should be performed by a qualified healthcare professional."
+}

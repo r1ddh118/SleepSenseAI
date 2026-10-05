@@ -1,0 +1,45 @@
+section,field,value
+meta,report_generated_at,2026-10-05T06:25:17.791557Z
+meta,session_id,S001
+meta,user_id,alex@sleepsense.ai
+meta,timeframe,24h
+meta,timeframe_label,24-Hour Diurnal & Circadian Analysis
+meta,period_start,2026-04-09
+meta,period_end,2026-04-09
+meta,report_type,SleepSense AI — 24-Hour Diurnal & Circadian Analysis Report
+patient_info,user_id,alex@sleepsense.ai
+sleep_summary,timeframe,24h
+sleep_summary,timeframe_label,24-Hour Diurnal & Circadian Analysis
+sleep_summary,sleep_score,92.5
+sleep_summary,sleep_category,Optimal
+sleep_summary,sleep_efficiency,92.5
+sleep_summary,sleep_duration_hours,8.0
+sleep_summary,n3_fraction,0.18
+sleep_summary,rem_fraction,0.14
+sleep_summary,wake_fraction,0.08
+sleep_summary,avg_hr,62.3
+sleep_summary,hr_std,8.2
+sleep_summary,avg_movement,
+sleep_summary,event_rate,0.02
+sleep_summary,awakenings,
+sleep_summary,score_disclaimer,Sleep score is an academic analytics metric only — NOT clinically validated.
+longitudinal_trend,sleep_score_7d_avg,92.5
+longitudinal_trend,sleep_score_14d_avg,92.5
+longitudinal_trend,duration_7d_avg,8.0
+longitudinal_trend,efficiency_7d_avg,92.5
+risk_assessment,overall_risk_level,LOW
+risk_assessment,probability,0.18
+risk_assessment,risk_flags,"[{""label"": ""Healthy Sleep Architecture (24H)"", ""risk"": ""LOW"", ""probability"": 0.18, ""reasons"": [""Biometric signals and sleep continuity within normal physiological bounds""]}]"
+risk_assessment,disclaimer,Risk levels are screening indicators only — not a medical diagnosis.
+lifestyle,caffeine_mg,40
+lifestyle,screen_time_min,25
+lifestyle,exercise_min,35
+lifestyle,stress_level,4
+lifestyle,nap_minutes,0
+recommendations,,"[{""area"": ""Circadian Diurnal Rhythm"", ""message"": ""Maintain consistent morning sunlight exposure within 30 minutes of waking."", ""severity"": ""info"", ""triggered_by"": ""24h circadian tracking""}, {""area"": ""Caffeine Timing"", ""message"": ""Limit caffeine consumption after 2:00 PM to protect nocturnal adenosine buildup."", ""severity"": ""ok"", ""triggered_by"": ""24h sleep latency analysis""}]"
+alerts,,[]
+model_info,scoring_model,"SleepSense AI Analytics (v2.0, PySpark) [24-Hour Diurnal & Circadian Analysis]"
+model_info,evaluation_note,Any ML model metrics reported use a user-level train/test split (no user appears in both training and test sets). This methodology is described explicitly to prevent data-leakage inflation.
+model_info,not_clinically_validated,True
+disclaimer,,This report is an analytical screening tool and does not constitute a medical diagnosis. Clinical interpretation should be performed by a qualified healthcare professional.
+disclaimer,text,This report is an analytical screening tool and does not constitute a medical diagnosis. Clinical interpretation should be performed by a qualified healthcare professional.

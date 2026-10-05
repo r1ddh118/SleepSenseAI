@@ -1,0 +1,40 @@
+section,field,value
+meta,report_generated_at,2026-10-05T05:27:19.465550Z
+meta,session_id,U034-SEED-N01
+meta,user_id,U034
+meta,period_start,
+meta,period_end,2025-09-01
+meta,report_type,SleepSense AI Analytical Screening Report
+patient_info,user_id,U034
+sleep_summary,sleep_score,65.0
+sleep_summary,sleep_category,Fair
+sleep_summary,sleep_efficiency,0.9
+sleep_summary,sleep_duration_hours,7.0
+sleep_summary,n3_fraction,0.18
+sleep_summary,rem_fraction,0.2
+sleep_summary,wake_fraction,0.1
+sleep_summary,avg_hr,65.0
+sleep_summary,hr_std,5.0
+sleep_summary,avg_movement,
+sleep_summary,event_rate,0.01
+sleep_summary,awakenings,
+sleep_summary,score_disclaimer,Sleep score is an academic analytics metric only — NOT clinically validated.
+longitudinal_trend,sleep_score_7d_avg,65.0
+longitudinal_trend,sleep_score_14d_avg,65.0
+longitudinal_trend,duration_7d_avg,7.0
+longitudinal_trend,efficiency_7d_avg,
+risk_assessment,overall_risk_level,LOW
+risk_assessment,risk_flags,[]
+risk_assessment,evidence,"[""Auto-seeded declining night 1""]"
+lifestyle,caffeine_mg,0
+lifestyle,screen_time_min,30
+lifestyle,exercise_min,45
+lifestyle,stress_level,4
+lifestyle,nap_minutes,0
+recommendations,,[]
+alerts,,[]
+model_info,scoring_model,"SleepSense AI Rule-Based Analytics (v2.0, PySpark)"
+model_info,evaluation_note,Any ML model metrics reported use a user-level train/test split (no user appears in both training and test sets). This methodology is described explicitly to prevent data-leakage inflation.
+model_info,not_clinically_validated,True
+disclaimer,,This report is an analytical screening tool and does not constitute a medical diagnosis. Clinical interpretation should be performed by a qualified healthcare professional.
+disclaimer,text,This report is an analytical screening tool and does not constitute a medical diagnosis. Clinical interpretation should be performed by a qualified healthcare professional.

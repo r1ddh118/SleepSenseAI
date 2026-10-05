@@ -1,0 +1,83 @@
+{
+  "meta": {
+    "report_generated_at": "2026-10-05T06:25:22.037915Z",
+    "session_id": "U034-SEED-N01",
+    "user_id": "U034",
+    "timeframe": "12h",
+    "timeframe_label": "12-Hour Acute Overnight Screening",
+    "period_start": "2025-09-07",
+    "period_end": "2025-09-07",
+    "report_type": "SleepSense AI \u2014 12-Hour Acute Overnight Screening Report"
+  },
+  "patient_info": {
+    "user_id": "U034"
+  },
+  "sleep_summary": {
+    "timeframe": "12h",
+    "timeframe_label": "12-Hour Acute Overnight Screening",
+    "sleep_score": 35.0,
+    "sleep_category": "Poor",
+    "sleep_efficiency": 64.0,
+    "sleep_duration_hours": 5.8,
+    "n3_fraction": 0.04,
+    "rem_fraction": 0.08,
+    "wake_fraction": 0.33,
+    "avg_hr": 74.0,
+    "hr_std": 8.0,
+    "avg_movement": null,
+    "event_rate": 0.075,
+    "awakenings": null,
+    "score_disclaimer": "Sleep score is an academic analytics metric only \u2014 NOT clinically validated."
+  },
+  "longitudinal_trend": {
+    "sleep_score_7d_avg": 35.0,
+    "sleep_score_14d_avg": 35.0,
+    "duration_7d_avg": 5.8,
+    "efficiency_7d_avg": 64.0
+  },
+  "risk_assessment": {
+    "overall_risk_level": "HIGH",
+    "probability": 0.76,
+    "risk_flags": [
+      {
+        "label": "Sleep Apnea & Fragmentation Risk (12H)",
+        "risk": "HIGH",
+        "probability": 0.76,
+        "reasons": [
+          "Reduced sleep efficiency (64.0%) across 12-Hour Acute Overnight Screening",
+          "Elevated apnea event rate (7.5%)",
+          "Sub-optimal N3 slow-wave deep sleep fraction (4.0%)"
+        ]
+      }
+    ],
+    "disclaimer": "Risk levels are screening indicators only \u2014 not a medical diagnosis."
+  },
+  "lifestyle": {
+    "caffeine_mg": 0,
+    "screen_time_min": 25,
+    "exercise_min": 35,
+    "stress_level": 4,
+    "nap_minutes": 0
+  },
+  "recommendations": [
+    {
+      "area": "Acute Overnight Rest",
+      "message": "Resting heart rate dipped normally during slow-wave sleep. Ensure a consistent wind-down routine.",
+      "severity": "ok",
+      "triggered_by": "12h physiological overnight trace"
+    },
+    {
+      "area": "Environment",
+      "message": "Keep bedroom dark, cool (65-68\u00b0F), and sound-isolated.",
+      "severity": "info",
+      "triggered_by": "Overnight continuity screening"
+    }
+  ],
+  "alerts": [],
+  "model_info": {
+    "scoring_model": "SleepSense AI Analytics (v2.0, PySpark) [12-Hour Acute Overnight Screening]",
+    "evaluation_note": "Any ML model metrics reported use a user-level train/test split (no user appears in both training and test sets). This methodology is described explicitly to prevent data-leakage inflation.",
+    "not_clinically_validated": true
+  },
+  "disclaimer": "This report is an analytical screening tool and does not constitute a medical diagnosis. Clinical interpretation should be performed by a qualified healthcare professional."
+}
