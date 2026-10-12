@@ -18,6 +18,7 @@ interface Alert {
 export function PatientDashboard() {
   const { user, logout } = useAuth();
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [patientSessions, setPatientSessions] = useState<any[]>([]);
 
   useEffect(() => {
     // Load patient-specific alerts
@@ -27,8 +28,68 @@ export function PatientDashboard() {
     }
   }, [user?.email]);
 
-  // Get patient's own sessions
-  const patientSessions = readStoredSessions(`sessions_${user?.email}`);
+  useEffect(() => {
+    if (!user?.email) return;
+
+    const loadSessions = async () => {
+      // 1. Read from localStorage
+      const local = readStoredSessions(`sessions_${user.email}`);
+
+      // 2. Try fetching from backend sessions
+      try {
+        const token = localStorage.getItem("token");
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/v1/sessions/?limit=50`, { headers });
+        if (res.ok) {
+          const remoteList = await res.json();
+          // Map remote sessions to Session format
+          const mappedRemote = remoteList.map((rs: any) => ({
+            id: rs.sid || rs.id,
+            sid: rs.sid || rs.id,
+            date: rs.created_at ? rs.created_at.split("T")[0] : "Recent",
+            duration: rs.duration_seconds ? Math.round(rs.duration_seconds / 60) : 480,
+            riskProbability: rs.risk_level === "HIGH" ? 0.8 : rs.risk_level === "MODERATE" ? 0.5 : 0.15,
+            riskLevel: (rs.risk_level || "low").toLowerCase(),
+            status: rs.status || "completed",
+            features: {
+              HR_mean: 62.0,
+              HR_std: 4.5,
+              EDA_mean: 2.1,
+              TEMP_mean: 35.8,
+              event_rate: 0.02,
+              sleep_efficiency: rs.sleep_score || 85,
+            },
+            sleepStages: {
+              wake: 8,
+              n1: 5,
+              n2: 45,
+              n3: 22,
+              rem: 20,
+            },
+          }));
+
+          // Merge without duplicates
+          const seen = new Set(local.map((s) => s.sid || s.id));
+          const merged = [...local];
+          for (const s of mappedRemote) {
+            if (!seen.has(s.sid) && !seen.has(s.id)) {
+              seen.add(s.sid);
+              merged.push(s);
+            }
+          }
+          setPatientSessions(merged);
+          return;
+        }
+      } catch {
+        // Fallback to local
+      }
+      setPatientSessions(local);
+    };
+
+    loadSessions();
+  }, [user?.email]);
 
   const markAlertAsRead = (alertId: string) => {
     const updatedAlerts = alerts.map((alert) =>

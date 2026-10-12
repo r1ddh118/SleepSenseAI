@@ -25,9 +25,15 @@ export function RecordSleep() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [userId, setUserId] = useState("U001");
+  const [userId, setUserId] = useState(user?.email || user?.name || "U001");
   const [customSid, setCustomSid] = useState("");
   const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    if (user?.email) {
+      setUserId(user.email);
+    }
+  }, [user]);
   
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -140,6 +146,45 @@ export function RecordSleep() {
         if (data.status === "completed" || data.status === "failed") {
           setIsUploading(false);
           clearInterval(interval);
+
+          if (data.status === "completed") {
+            const patientKey = user?.email ? `sessions_${user.email}` : `sessions_${userId}`;
+            try {
+              const existing = JSON.parse(localStorage.getItem(patientKey) || "[]");
+              const alreadyExists = existing.some((s: any) => s.id === activeSid || s.sid === activeSid);
+              if (!alreadyExists) {
+                const score = data.sleep_score ?? (sleepScore ?? 85);
+                const newSessionRecord = {
+                  id: activeSid,
+                  sid: activeSid,
+                  date: new Date().toISOString().split("T")[0],
+                  duration: 480,
+                  riskProbability: (data.risk_level === "HIGH" || riskLevel === "HIGH") ? 0.8 : (data.risk_level === "MODERATE" || riskLevel === "MODERATE") ? 0.5 : 0.15,
+                  riskLevel: (data.risk_level || riskLevel || "low").toLowerCase(),
+                  status: "completed",
+                  features: {
+                    HR_mean: 62.0,
+                    HR_std: 4.5,
+                    EDA_mean: 2.1,
+                    TEMP_mean: 35.8,
+                    event_rate: 0.02,
+                    sleep_efficiency: Math.round(score),
+                  },
+                  sleepStages: {
+                    wake: 8,
+                    n1: 5,
+                    n2: 45,
+                    n3: 22,
+                    rem: 20,
+                  },
+                };
+                existing.unshift(newSessionRecord);
+                localStorage.setItem(patientKey, JSON.stringify(existing));
+              }
+            } catch (err) {
+              console.error("Failed to store local session history:", err);
+            }
+          }
         }
       } catch (e) {
         // Continue polling
