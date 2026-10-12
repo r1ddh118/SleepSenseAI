@@ -57,3 +57,7 @@ frontend/dist/
 # Local tooling state
 .codex
 .sixth/
+
+docs/
+data/
+

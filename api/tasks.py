@@ -413,36 +413,135 @@ def run_training(self, dataset_path: str | None = None) -> dict:
 
 
 @app.task(bind=True, name="tasks.run_sleep_analytics")
-def run_sleep_analytics(self, session_id: int) -> dict:
-    """Run Spark-backed analytics for a manual sleep session."""
+def run_sleep_analytics(self, session_id: str | int, source: str = "manual") -> dict:
+    """Run analytics for either a manual sleep session or a whole-night 1 Hz sensor CSV."""
     from analytics.recommendations import generate_recommendations
     from database import SessionLocal
-    from models_db import ManualSleepSession, Session as SessionModel, SleepAnalytics
-    from routers.alerts import create_alerts_for_history
-    from spark.cleaning import clean_sleep_data
-    from spark.feature_engineering import add_rolling_features
-    from spark.ingestion import load_sleep_data
-    from spark.longitudinal import add_longitudinal_metrics
-    from spark.risk_analysis import add_risk_features
-    from spark.sleep_analytics import nightly_metrics
-    from spark.sleep_score import add_sleep_score
-    from spark.spark_session import create_spark_session
+    from models_db import (
+        DoctorAlert,
+        ManualSleepSession,
+        NightSession,
+        Session as SessionModel,
+        SessionEDA,
+        SessionReport,
+        SleepAnalytics,
+    )
+    from spark.night_pipeline import process_night_session
 
     db = SessionLocal()
     spark = None
+    sid_str = str(session_id)
     try:
-        session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-        manual = db.query(ManualSleepSession).filter(ManualSleepSession.session_id == session_id).first()
-        analytics = db.query(SleepAnalytics).filter(SleepAnalytics.session_id == session_id).first()
+        # Check if this is a night session or csv_night upload
+        night_session = db.query(NightSession).filter(NightSession.sid == sid_str).first()
+        session_model = db.query(SessionModel).filter((SessionModel.sid == sid_str) | (SessionModel.id == (int(session_id) if isinstance(session_id, int) or sid_str.isdigit() else -1))).first()
+
+        if night_session or source == "csv_night" or (session_model and session_model.sensor_csv_path):
+            csv_path = None
+            user_id = "U001"
+            if night_session:
+                csv_path = Path(night_session.file_path) if night_session.file_path else None
+                user_id = night_session.user_id
+            elif session_model and session_model.sensor_csv_path:
+                csv_path = Path(session_model.sensor_csv_path)
+
+            if not csv_path or not csv_path.exists():
+                # Search in data/raw/nights
+                matches = list((REPO_ROOT / "data" / "raw" / "nights").rglob(f"{sid_str}.csv"))
+                if matches:
+                    csv_path = matches[0]
+                    user_id = csv_path.parent.name
+                else:
+                    raise FileNotFoundError(f"CSV file for session '{sid_str}' not found.")
+
+            if not night_session:
+                night_session = NightSession(
+                    sid=sid_str,
+                    user_id=user_id,
+                    status="processing",
+                    file_path=str(csv_path),
+                )
+                db.add(night_session)
+            else:
+                night_session.status = "processing"
+            
+            if session_model:
+                session_model.status = "processing"
+            db.commit()
+
+            out_parquet = REPO_ROOT / "data" / "parquet" / "epochs"
+            out_eda = REPO_ROOT / "data" / "eda"
+
+            metrics = process_night_session(
+                session_id=sid_str,
+                csv_path=csv_path,
+                out_parquet_dir=out_parquet,
+                out_eda_dir=out_eda,
+                user_id=user_id,
+            )
+
+            night_session.status = "completed"
+            night_session.sleep_score = float(metrics.get("sleep_score", 0.0))
+            night_session.risk_level = metrics.get("risk_level", "LOW")
+            night_session.duration_seconds = metrics.get("duration_seconds", 0)
+
+            if session_model:
+                session_model.status = "completed"
+
+            eda_obj = db.query(SessionEDA).filter(SessionEDA.session_id == sid_str).first()
+            if not eda_obj:
+                eda_obj = SessionEDA(
+                    session_id=sid_str,
+                    user_id=user_id,
+                    num_samples=metrics.get("duration_seconds", 0),
+                    tonic_eda_mean_us=metrics.get("tonic_eda_mean_us", 0.0),
+                    phasic_peak_count=metrics.get("phasic_peak_count", 0),
+                    eda_json_path=str(out_eda / sid_str / "eda.json"),
+                )
+                db.add(eda_obj)
+
+            report_obj = db.query(SessionReport).filter(SessionReport.session_id == sid_str).first()
+            if not report_obj:
+                report_obj = SessionReport(
+                    session_id=sid_str,
+                    report_type="session_full",
+                    report_format="json",
+                    content=json.dumps(metrics),
+                    disclaimer="Academic risk screening only; not clinically validated.",
+                )
+                db.add(report_obj)
+
+            db.commit()
+            return {
+                "session_id": sid_str,
+                "status": "completed",
+                "sleep_score": metrics.get("sleep_score"),
+                "risk_level": metrics.get("risk_level"),
+            }
+
+        # Legacy manual session handling
+        session_id_int = int(session_id)
+        session = db.query(SessionModel).filter(SessionModel.id == session_id_int).first()
+        manual = db.query(ManualSleepSession).filter(ManualSleepSession.session_id == session_id_int).first()
+        analytics = db.query(SleepAnalytics).filter(SleepAnalytics.session_id == session_id_int).first()
         if not session or not manual:
             raise ValueError(f"Manual session {session_id} not found")
         if not analytics:
-            analytics = SleepAnalytics(session_id=session_id, status="PROCESSING", spark_job_id=self.request.id)
+            analytics = SleepAnalytics(session_id=session_id_int, status="PROCESSING", spark_job_id=self.request.id)
             db.add(analytics)
             db.commit()
 
         logger.info("[%s] Running Spark manual sleep analytics", session.sid)
         csv_path = _write_manual_observation_csv(manual, session.sid)
+        from spark.cleaning import clean_sleep_data
+        from spark.feature_engineering import add_rolling_features
+        from spark.ingestion import load_sleep_data
+        from spark.longitudinal import add_longitudinal_metrics
+        from spark.risk_analysis import add_risk_features
+        from spark.sleep_analytics import nightly_metrics
+        from spark.sleep_score import add_sleep_score
+        from spark.spark_session import create_spark_session
+
         spark = create_spark_session("SleepSense Manual Analytics")
         raw = load_sleep_data(spark, csv_path)
         clean = clean_sleep_data(raw)
@@ -505,6 +604,7 @@ def run_sleep_analytics(self, session_id: int) -> dict:
         session.status = "COMPLETED"
         db.commit()
 
+        from routers.alerts import create_alerts_for_history
         nightly_history = _analytics_history_for_patient(db, manual.patient_uid)
         alerts = create_alerts_for_history(db, nightly_history)
 
@@ -516,14 +616,14 @@ def run_sleep_analytics(self, session_id: int) -> dict:
             "alerts_created": len(alerts),
         }
     except Exception as exc:
-        logger.exception("Manual Spark analytics failed for session_id=%s", session_id)
-        analytics = db.query(SleepAnalytics).filter(SleepAnalytics.session_id == session_id).first()
-        session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-        if analytics:
+        logger.exception("Spark analytics failed for session_id=%s", session_id)
+        if 'night_session' in locals() and night_session:
+            night_session.status = "failed"
+            night_session.error = str(exc)
+        if 'analytics' in locals() and analytics:
             analytics.status = "FAILED"
             analytics.error = str(exc)
-            analytics.updated_at = datetime.utcnow()
-        if session:
+        if 'session' in locals() and session:
             session.status = "FAILED"
         db.commit()
         raise

@@ -158,3 +158,15 @@ def screen_condition_risks(features: Mapping[str, Any]) -> list[dict[str, Any]]:
         )
 
     return sorted(flags, key=lambda item: RISK_ORDER[item["risk"]], reverse=True)
+
+
+def evaluate_condition_risk(features: Mapping[str, Any]) -> dict[str, Any]:
+    """Helper evaluating condition risk level and risk flags."""
+    flags = screen_condition_risks(features)
+    if any(f.get("risk") == "HIGH" for f in flags):
+        level = "HIGH"
+    elif any(f.get("risk") == "MODERATE" for f in flags):
+        level = "MODERATE"
+    else:
+        level = "LOW"
+    return {"risk_level": level, "risk_flags": flags}
