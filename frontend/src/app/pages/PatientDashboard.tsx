@@ -65,10 +65,10 @@ export function PatientDashboard() {
           <div className="flex items-center gap-3">
             <Link
               to="/record-sleep"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium shadow-sm"
             >
               <Plus className="w-4 h-4" />
-              Log Sleep Session
+              Upload Night
             </Link>
             <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
               <User className="w-4 h-4 text-gray-600 dark:text-gray-400" />
@@ -249,7 +249,7 @@ export function PatientDashboard() {
                 className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <Plus className="w-4 h-4" />
-                Log Your First Session
+                Upload Night CSV
               </Link>
             </div>
           ) : (

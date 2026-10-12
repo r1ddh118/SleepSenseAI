@@ -17,7 +17,7 @@ if str(API_DIR) not in sys.path:
     sys.path.insert(0, str(API_DIR))
 
 from database import init_db
-from routers import alerts, auth_router, frontend_adapter, health, models, predictions, reports, sessions
+from routers import alerts, auth_router, frontend_adapter, health, models, predictions, reports, sample_data, sessions
 from ws_manager import ws_manager
 
 logging.basicConfig(level=logging.INFO)
@@ -58,6 +58,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 app.include_router(auth_router.router)
@@ -68,6 +69,7 @@ app.include_router(models.router)
 app.include_router(health.router)
 app.include_router(frontend_adapter.router)
 app.include_router(alerts.router)
+app.include_router(sample_data.router)
 
 
 @app.websocket("/ws/live/{sid}")

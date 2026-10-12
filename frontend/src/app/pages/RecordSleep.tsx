@@ -1,261 +1,376 @@
-import { FormEvent, useEffect, useState } from "react";
-import { Link } from "react-router";
-import { ArrowLeft, Loader2, Moon, Send } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Link, useNavigate } from "react-router";
+import { ArrowLeft, Upload, FileText, CheckCircle2, AlertCircle, Loader2, Download, Moon, Sparkles, Activity } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
-type AnalyticsResult = {
-  status: string;
-  session_id?: string;
-  sid?: string;
-  sleep_score?: number;
-  sleep_category?: string;
-  risk_level?: string;
-  recommendations?: Array<{ area: string; message: string }>;
-  risk?: { risk_score?: number; risk_level?: string };
-  metrics?: Record<string, any>;
-  error?: string | null;
-};
-
-const initialForm = {
-  user_id: "U034",
-  date: new Date().toISOString().slice(0, 10),
-  bed_time: "23:00",
-  sleep_onset: "23:20",
-  wake_time: "07:00",
-  sleep_duration_hours: "7.4",
-  sleep_efficiency: "0.88",
-  n3_fraction: "0.16",
-  rem_fraction: "0.20",
-  wake_fraction: "0.10",
-  heart_rate: "64",
-  hr_std: "4",
-  movement_std: "0.10",
-  event_rate: "0.004",
-  spo2: "96",
-  caffeine: "80",
-  screen_time: "60",
-  exercise_minutes: "30",
-  stress_level: "4",
-  nap_minutes: "0",
-  awakenings: "2",
-};
-
-const numberFrom = (value: unknown, fallback = 0) => {
-  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-const percentFromFraction = (value: unknown) => Math.round(numberFrom(value, 0) * 100);
-
-const riskLevelToProbability = (riskLevel?: string, score?: number) => {
-  const normalized = String(riskLevel ?? "").toUpperCase();
-  if (normalized.includes("HIGH")) {
-    return 0.82;
-  }
-  if (normalized.includes("MODERATE")) {
-    return 0.52;
-  }
-  if (normalized.includes("LOW")) {
-    return 0.18;
-  }
-  if (typeof score === "number") {
-    return Math.max(0, Math.min(1, 1 - score / 100));
-  }
-  return 0;
-};
-
-const estimateEda = (metrics: Record<string, any>) => {
-  const stress = numberFrom(metrics.stress_level, 4);
-  const wakeFraction = numberFrom(metrics.wake_fraction, 0.1);
-  const eventRate = numberFrom(metrics.event_rate, 0);
-  return Number(Math.max(0.5, 1.2 + stress * 0.35 + wakeFraction * 2.2 + eventRate * 8).toFixed(2));
-};
-
-const saveCompletedSession = (storageKey: string, analytics: AnalyticsResult) => {
-  const metrics = analytics.metrics ?? {};
-  const id = String(analytics.session_id || analytics.sid || metrics.session_id || "").trim();
-  if (!id) {
-    return;
-  }
-
-  const sleepScore = numberFrom(analytics.sleep_score, numberFrom(metrics.sleep_score, 0));
-  const sleepEfficiency = numberFrom(analytics.metrics?.sleep_efficiency, numberFrom(metrics.sleep_efficiency, 0));
-  const storedSession = {
-    id,
-    sid: analytics.sid || metrics.session_id || id,
-    date: metrics.date || new Date().toISOString().slice(0, 10),
-    duration: Math.round(numberFrom(metrics.sleep_duration_hours, 8) * 60),
-    riskProbability: riskLevelToProbability(analytics.risk_level || metrics.risk_level, sleepScore),
-    riskLevel: String(analytics.risk_level || metrics.risk_level || "LOW").toLowerCase(),
-    status: "completed",
-    sleepScore,
-    sleepCategory: analytics.sleep_category || metrics.sleep_category,
-    sleepStages: {
-      wake: percentFromFraction(metrics.wake_fraction),
-      n1: percentFromFraction(metrics.n1_fraction),
-      n2: percentFromFraction(metrics.n2_fraction),
-      n3: percentFromFraction(metrics.n3_fraction),
-      rem: percentFromFraction(metrics.rem_fraction),
-    },
-    features: {
-      HR_mean: numberFrom(metrics.avg_hr, numberFrom(metrics.avg_heart_rate, 0)),
-      HR_std: numberFrom(metrics.hr_std, numberFrom(metrics.stddev_heart_rate, 0)),
-      EDA_mean: estimateEda(metrics),
-      TEMP_mean: 34,
-      event_rate: numberFrom(metrics.event_rate, 0),
-      sleep_efficiency: sleepEfficiency,
-    },
-    recommendations: analytics.recommendations ?? [],
-    createdAt: new Date().toISOString(),
-  };
-
-  const existing = JSON.parse(localStorage.getItem(storageKey) || "[]");
-  const sessions = Array.isArray(existing) ? existing : [];
-  const next = [storedSession, ...sessions.filter((session: any) => session?.id !== id)];
-  localStorage.setItem(storageKey, JSON.stringify(next));
-};
+const REQUIRED_COLUMNS = [
+  "timestamp_iso",
+  "elapsed_sec",
+  "hr_bpm",
+  "movement_magnitude",
+  "eda_us",
+  "spo2_pct",
+  "temp_c",
+  "bvp_au",
+  "resp_rpm",
+  "ambient_lux",
+  "snore_decibels",
+  "user_id",
+  "session_id",
+];
 
 export function RecordSleep() {
   const { user } = useAuth();
-  const [form, setForm] = useState(initialForm);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [status, setStatus] = useState("");
-  const [analytics, setAnalytics] = useState<AnalyticsResult | null>(null);
-  const [error, setError] = useState("");
+  const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const update = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [userId, setUserId] = useState("U001");
+  const [customSid, setCustomSid] = useState("");
+  const [notes, setNotes] = useState("");
+  
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [activeSid, setActiveSid] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [sleepScore, setSleepScore] = useState<number | null>(null);
+  const [riskLevel, setRiskLevel] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setError("");
-    setAnalytics(null);
-    setStatus("PROCESSING");
+  const validateCsvHeader = async (file: File): Promise<boolean> => {
+    setValidationError(null);
     try {
-      const response = await fetch("/api/v1/sessions/manual", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      if (!response.ok) {
-        throw new Error(await response.text());
+      const text = await file.slice(0, 4096).text();
+      const lines = text.split(/\r?\n/);
+      const firstLine = lines[0] || "";
+      const headers = firstLine.split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+      const missing = REQUIRED_COLUMNS.filter((col) => !headers.includes(col));
+      
+      if (missing.length > 0) {
+        setValidationError("CSV missing required 1 Hz sensor contract columns: " + missing.join(", "));
+        return false;
       }
-      const data = await response.json();
-      setSessionId(data.session_id);
-      setStatus(data.status);
+      return true;
     } catch (err) {
-      setStatus("");
-      setError(err instanceof Error ? err.message : "Failed to submit sleep session");
+      setValidationError("Could not read CSV file headers.");
+      return false;
+    }
+  };
+
+  const handleFileChange = async (file: File | null) => {
+    if (!file) return;
+    if (!file.name.endsWith(".csv")) {
+      setValidationError("Please select a valid .csv night sensor file.");
+      setSelectedFile(null);
+      return;
+    }
+    const isValid = await validateCsvHeader(file);
+    if (isValid) {
+      setSelectedFile(file);
+      if (!customSid) {
+        setCustomSid(file.name.replace(".csv", ""));
+      }
+    } else {
+      setSelectedFile(null);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      await handleFileChange(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+  };
+
+  const handleUploadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedFile) {
+      setValidationError("Please select a valid CSV file to upload.");
+      return;
+    }
+
+    setIsUploading(true);
+    setErrorMsg(null);
+    setStatus("queued");
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("user_id", userId);
+    if (customSid) formData.append("session_id", customSid);
+    if (notes) formData.append("notes", notes);
+
+    try {
+      const resp = await fetch("/api/v1/sessions/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        const errJson = await resp.json().catch(() => ({ detail: "Upload failed" }));
+        throw new Error(errJson.detail || "Upload failed");
+      }
+
+      const res = await resp.json();
+      setActiveSid(res.session_id);
+      setStatus(res.status || "queued");
+    } catch (err: any) {
+      setIsUploading(false);
+      setErrorMsg(err.message || "Failed to upload night sensor file.");
+      setStatus("failed");
     }
   };
 
   useEffect(() => {
-    if (!sessionId || status !== "PROCESSING") {
-      return;
-    }
-    const timer = window.setInterval(async () => {
-      const response = await fetch(`/api/v1/sessions/${sessionId}/analytics`);
-      if (!response.ok) {
-        return;
-      }
-      const data = await response.json();
-      setAnalytics(data);
-      setStatus(data.status);
-      if (data.status !== "PROCESSING") {
-        window.clearInterval(timer);
-        if (data.status === "COMPLETED" && user?.email) {
-          saveCompletedSession(`sessions_${user.email}`, data);
-        }
-      }
-    }, 2500);
-    return () => window.clearInterval(timer);
-  }, [sessionId, status, user?.email]);
+    if (!activeSid || status === "completed" || status === "failed") return;
 
-  const fields = [
-    ["user_id", "Patient ID"],
-    ["date", "Date"],
-    ["bed_time", "Bed time"],
-    ["sleep_onset", "Sleep onset"],
-    ["wake_time", "Wake time"],
-    ["sleep_duration_hours", "Duration hours"],
-    ["sleep_efficiency", "Sleep efficiency"],
-    ["n3_fraction", "N3 fraction"],
-    ["rem_fraction", "REM fraction"],
-    ["wake_fraction", "Wake fraction"],
-    ["heart_rate", "Average HR"],
-    ["hr_std", "HR std"],
-    ["movement_std", "Movement std"],
-    ["event_rate", "Event rate"],
-    ["spo2", "SpO2"],
-    ["caffeine", "Caffeine mg"],
-    ["screen_time", "Screen time min"],
-    ["exercise_minutes", "Exercise min"],
-    ["stress_level", "Stress 1-10"],
-    ["nap_minutes", "Nap min"],
-    ["awakenings", "Awakenings"],
-  ];
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/v1/sessions/" + activeSid + "/status");
+        if (!res.ok) return;
+        const data = await res.json();
+        setStatus(data.status);
+        if (data.sleep_score !== undefined) setSleepScore(data.sleep_score);
+        if (data.risk_level) setRiskLevel(data.risk_level);
+        if (data.error) setErrorMsg(data.error);
+
+        if (data.status === "completed" || data.status === "failed") {
+          setIsUploading(false);
+          clearInterval(interval);
+        }
+      } catch (e) {
+        // Continue polling
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [activeSid, status]);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Link to="/dashboard" className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+          <Link to="/dashboard" className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
             <ArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-300" />
           </Link>
-          <Moon className="w-6 h-6 text-blue-600" />
+          <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
+            <Moon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+          </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Record Sleep</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Manual entry is processed asynchronously by Celery and Spark</p>
+            <h1 className="text-xl font-bold">Upload Night Sensor Data</h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Submit 1 Hz sensor CSV streams for Spark night-level epoching, hypnogram, and EDA analytics
+            </p>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
-        <form onSubmit={submit} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {fields.map(([key, label]) => (
-              <label key={key} className="block">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</span>
-                <input
-                  type={key === "date" ? "date" : "text"}
-                  value={form[key as keyof typeof form]}
-                  onChange={(event) => update(key, event.target.value)}
-                  placeholder="unknown"
-                  className="mt-1 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                />
-              </label>
-            ))}
-          </div>
-          <button className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-            <Send className="w-4 h-4" />
-            Submit
-          </button>
-          {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-        </form>
-
-        <aside className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 h-fit">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Processing Status</h2>
-          {!sessionId && <p className="text-sm text-gray-500 dark:text-gray-400">Submit a session to start analytics.</p>}
-          {sessionId && (
-            <div className="space-y-3">
-              <p className="text-sm text-gray-600 dark:text-gray-300">Session: {sessionId}</p>
-              <p className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 dark:text-blue-300">
-                {status === "PROCESSING" && <Loader2 className="w-4 h-4 animate-spin" />}
-                {status}
-              </p>
-              {analytics?.status === "COMPLETED" && (
-                <div className="space-y-2 text-sm text-gray-700 dark:text-gray-200">
-                  <p>Score: {analytics.sleep_score} ({analytics.sleep_category})</p>
-                  <p>Risk: {analytics.risk_level}</p>
-                  <p>Recommendations: {analytics.recommendations?.length ?? 0}</p>
-                  <Link
-                    to={`/session/${analytics.session_id || sessionId}`}
-                    className="inline-flex text-blue-600 dark:text-blue-400 hover:underline"
-                  >
-                    Open saved EDA/session analysis
-                  </Link>
+      <main className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8">
+        <div className="space-y-6">
+          <form onSubmit={handleUploadSubmit} className="space-y-6">
+            <div
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onClick={() => fileInputRef.current?.click()}
+              className={"border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all " + (
+                selectedFile
+                  ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20"
+                  : "border-gray-300 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500 bg-white dark:bg-gray-800"
+              )}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
+                className="hidden"
+              />
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/40 rounded-full flex items-center justify-center mx-auto mb-3 text-blue-600 dark:text-blue-400">
+                <Upload className="w-6 h-6" />
+              </div>
+              {selectedFile ? (
+                <div className="space-y-1">
+                  <p className="font-bold text-blue-600 dark:text-blue-400 flex items-center justify-center gap-2">
+                    <FileText className="w-5 h-5" /> {selectedFile.name}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB | Ready for ingestion
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                    Drag and drop your 1 Hz night sensor CSV file here
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Or click to browse your local filesystem (.csv files up to 100 MB)
+                  </p>
                 </div>
               )}
-              {analytics?.status === "FAILED" && <p className="text-sm text-red-600">{analytics.error}</p>}
+            </div>
+
+            {validationError && (
+              <div className="p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-300 flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold">Validation Error: </span>
+                  {validationError}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Patient / User ID
+                </label>
+                <input
+                  type="text"
+                  value={userId}
+                  onChange={(e) => setUserId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Session ID (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={customSid}
+                  onChange={(e) => setCustomSid(e.target.value)}
+                  placeholder="Auto-generated if empty"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Clinical Notes
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Optional notes on patient condition, symptoms, or sleep environment..."
+                  rows={2}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={!selectedFile || isUploading}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" /> Processing Night Pipeline...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-5 h-5" /> Ingest & Execute Night Analytics
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded-xl p-5 space-y-3">
+            <div className="flex items-center gap-2 text-blue-900 dark:text-blue-300 font-bold text-sm">
+              <Download className="w-4 h-4" /> Need Demo Data? Download Pre-Generated Sensor CSVs:
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <a
+                href="/api/v1/sample-data/healthy_night.csv"
+                download
+                className="p-3 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors flex items-center gap-2 justify-center"
+              >
+                <FileText className="w-4 h-4 text-green-500" /> Healthy Night (U001)
+              </a>
+              <a
+                href="/api/v1/sample-data/insomnia_night.csv"
+                download
+                className="p-3 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors flex items-center gap-2 justify-center"
+              >
+                <FileText className="w-4 h-4 text-amber-500" /> Insomnia Night (U002)
+              </a>
+              <a
+                href="/api/v1/sample-data/apnea_night.csv"
+                download
+                className="p-3 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors flex items-center gap-2 justify-center"
+              >
+                <FileText className="w-4 h-4 text-red-500" /> Apnea Pattern (U034)
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <aside className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 h-fit space-y-4">
+          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+            <Activity className="w-5 h-5 text-blue-500" /> Pipeline Execution Status
+          </h2>
+
+          {!activeSid && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Select a 1 Hz CSV stream and click submit to trigger PySpark processing.
+            </p>
+          )}
+
+          {activeSid && (
+            <div className="space-y-4 text-xs">
+              <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-1 font-mono">
+                <div className="text-gray-500 dark:text-gray-400">Session ID:</div>
+                <div className="font-bold text-gray-900 dark:text-gray-100 truncate">{activeSid}</div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-medium">
+                  <span>Status:</span>
+                  <span className="uppercase font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                    {status !== "completed" && status !== "failed" && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
+                    )}
+                    {status}
+                  </span>
+                </div>
+
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                  <div
+                    className={"h-2 transition-all duration-500 " + (
+                      status === "completed" ? "w-full bg-green-500" : status === "failed" ? "w-full bg-red-500" : "w-2/3 bg-blue-500 animate-pulse"
+                    )}
+                  />
+                </div>
+              </div>
+
+              {status === "completed" && (
+                <div className="p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg space-y-3">
+                  <div className="flex items-center gap-2 font-bold text-green-800 dark:text-green-300">
+                    <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" /> Processing Completed!
+                  </div>
+                  {sleepScore !== null && (
+                    <div className="text-gray-700 dark:text-gray-200 space-y-1">
+                      <p>Sleep Score: <span className="font-bold text-blue-600 dark:text-blue-400">{sleepScore.toFixed(1)}</span> / 100</p>
+                      {riskLevel && <p>Risk Profile: <span className="font-semibold">{riskLevel}</span></p>}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => navigate("/session/" + activeSid)}
+                    className="w-full py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-colors text-center text-xs block"
+                  >
+                    Open Tabbed EDA & Hypnogram View →
+                  </button>
+                </div>
+              )}
+
+              {status === "failed" && (
+                <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 space-y-1">
+                  <div className="font-bold">Pipeline Failed</div>
+                  <p>{errorMsg || "An unexpected error occurred during execution."}</p>
+                </div>
+              )}
             </div>
           )}
         </aside>

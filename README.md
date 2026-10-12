@@ -57,45 +57,27 @@ SleepSense AI is a full-stack, distributed sleep analytics application. It accep
 ## Architecture & Data Flow
 
 ```text
-                               ┌───────────────────────────┐
-                               │  Manual Sleep Entry / UI  │
-                               │   or Synthetic CSV Input  │
-                               └─────────────┬─────────────┘
-                                             │
-                                             ▼
-                               ┌───────────────────────────┐
-                               │   FastAPI Backend (8010)  │
-                               │   Stores Raw DB Record    │
-                               └─────────────┬─────────────┘
-                                             │
-                                             ▼
-                               ┌───────────────────────────┐
-                               │   Redis Broker (6379)     │
-                               │   Celery Task Dispatch    │
-                               └─────────────┬─────────────┘
-                                             │
-                                             ▼
-                               ┌───────────────────────────┐
-                               │   Celery PySpark Worker   │
-                               │  Ingestion ➔ Cleaning ➔   │
-                               │  Rolling Features ➔ Aggs  │
-                               └─────────────┬─────────────┘
-                                             │
-                        ┌────────────────────┴────────────────────┐
-                        ▼                                         ▼
-         ┌──────────────────────────────┐          ┌──────────────────────────────┐
-         │ Parquet Storage              │          │ Analytics Layer              │
-         │ (data/parquet/)              │          │ - Academic 0-100 Score       │
-         └──────────────────────────────┘          │ - Rule-Based Risk Screening  │
-                                                   │ - Metric Recommendations     │
-                                                   │ - Multi-Night Alerts         │
-                                                   └──────────────┬───────────────┘
-                                                                  │
-                                                                  ▼
-                                                   ┌──────────────────────────────┐
-                                                   │ React Patient/Doctor UI      │
-                                                   │ (http://localhost:5173)      │
-                                                   └──────────────────────────────┘
+ ┌─────────────────────────────────┐       ┌─────────────────────────────────┐
+ │ 1. GENERATE                     │       │ 2. UPLOAD                       │
+ │ scripts/generate_night_csv.py   │ ────► │ POST /api/v1/sessions/upload    │
+ │ (1 Hz synthetic sensor stream)  │       │ (Validates 13-column contract)  │
+ └─────────────────────────────────┘       └────────────────┬────────────────┘
+                                                            │
+                                                            ▼
+ ┌─────────────────────────────────┐       ┌─────────────────────────────────┐
+ │ 4. EDA & TIMELINE               │       │ 3. PROCESS                      │
+ │ - Tonic/Phasic EDA Filter       │ ◄──── │ spark/night_pipeline.py         │
+ │ - Clock-Time Epoching (W/N/R)   │       │ - Streaming Cleaning & Ranges   │
+ │ - Cardiorespiratory & SpO2      │       │ - AHI / Desat Event Detection   │
+ └────────────────┬────────────────┘       └─────────────────────────────────┘
+                  │
+                  ▼
+ ┌─────────────────────────────────┐       ┌─────────────────────────────────┐
+ │ 5. REPORT                       │       │ 6. DOCTOR PORTAL                │
+ │ GET /api/v1/sessions/{sid}/report│ ────► │ GET /api/v1/doctor/...          │
+ │ (JSON, CSV, HTML, PDF download) │       │ - Assignment-Gated Access (403) │
+ │ Split-Action Download Button    │       │ - 9 Clinical Tabs + Triage      │
+ └─────────────────────────────────┘       └─────────────────────────────────┘
 ```
 
 ---
@@ -120,6 +102,9 @@ SleepSenseAI/
 │   ├── __init__.py                # Package marker
 │   ├── spark_session.py           # Creates local PySpark session with UTC timezone & file:/// URIs
 │   ├── schemas.py                 # Explicit StructType schemas for raw observation CSVs
+│   ├── night_schema.py            # 13-column 1 Hz sensor contract & range validator
+│   ├── night_generator.py         # Multi-profile synthetic whole-night sensor CSV generator
+│   ├── night_pipeline.py          # PySpark streaming epoching, stage inference & EDA decomposition
 │   ├── ingestion.py               # Path-safe loader functions for raw CSVs and processed Parquet
 │   ├── cleaning.py                # Spark SQL cleaner: deduping, range checks (HR 45-130), movement calc
 │   ├── feature_engineering.py     # Sliding window functions (-5 to 0) for rolling HR & movement stddev/mean
@@ -136,26 +121,26 @@ SleepSenseAI/
 │   ├── condition_risk.py          # Rule-based risk engine (insomnia, apnea pattern, fragmentation)
 │   ├── recommendations.py         # Metric-triggered explainable user guidance generator
 │   ├── alerts.py                  # Persistence-based doctor alert manager for multi-night poor sleep
-│   └── report_builder.py          # Clinical report generator producing JSON, CSV, and HTML reports
+│   └── report_builder.py          # Clinical report generator producing JSON, CSV, HTML, and PDF reports
 │
 ├── api/                           # FastAPI Backend & Celery Task Management
 │   ├── main.py                    # FastAPI entry point, CORS configuration, & router inclusion
 │   ├── celery_app.py              # Celery instance configuration using Redis broker
 │   ├── tasks.py                   # Celery task wrappers executing PySpark & analytics pipelines
 │   ├── database.py                # SQLAlchemy engine setup & session factory
-│   ├── models_db.py               # SQLAlchemy ORM models (ManualSleepSession, DoctorAlert, DoctorReport)
+│   ├── models_db.py               # SQLAlchemy ORM models (NightSession, SessionEDA, DoctorPatientAssignment)
 │   ├── schemas.py                 # Pydantic schemas for API request validation & response serializing
 │   ├── config.py                  # Environment settings and application defaults
-│   ├── auth.py                    # User authentication stubs & context management
+│   ├── auth.py                    # User authentication, role verification & JWT management
 │   ├── ws_manager.py              # WebSocket connection manager for live client updates
 │   ├── requirements_api.txt       # Backend-specific Python requirements
 │   ├── Dockerfile                 # Container file for API service
 │   ├── templates/                 # Jinja2 HTML templates for doctor reports
 │   └── routers/                   # API Route Controllers
-│       ├── sessions.py            # POST manual sleep session & GET polling endpoints
-│       ├── doctor.py              # GET/POST doctor alert triage & patient history
+│       ├── sessions.py            # Whole-night CSV upload, status, timeline, and preserved manual endpoints
+│       ├── doctor.py              # Doctor alert triage & patient history
 │       ├── frontend.py            # Adapter endpoints for patient dashboard payloads
-│       └── reports.py             # Multi-format report builder endpoints (JSON/CSV/HTML)
+│       └── reports.py             # Multi-format report builder endpoints & doctor authorization routes
 │
 ├── frontend/                      # React 18 + Vite Web Application
 │   ├── package.json               # Frontend dependencies & npm script definitions
@@ -169,16 +154,19 @@ SleepSenseAI/
 │       │   ├── routes.tsx         # Route path declarations
 │       │   ├── pages/             # Page Views
 │       │   │   ├── Dashboard.tsx          # General dashboard redirect / summary
-│       │   │   ├── RecordSleep.tsx        # Manual sleep session input form
+│       │   │   ├── RecordSleep.tsx        # 1 Hz sensor CSV upload & streaming pipeline execution
 │       │   │   ├── PatientDashboard.tsx   # Detailed patient view (Score, Hypnogram, Sensor Charts)
-│       │   │   ├── DoctorDashboard.tsx    # Doctor alert triage, patient list & report preview
-│       │   │   ├── SessionDetail.tsx      # In-depth single night visualization
+│       │   │   ├── DoctorDashboard.tsx    # Doctor triage, session selector, & Full Clinical Report
+│       │   │   ├── SessionDetail.tsx      # In-depth 6-tab clock-time night visualization & download
 │       │   │   ├── ModelLeaderboard.tsx   # Analytics & algorithm performance metrics
 │       │   │   ├── Login.tsx              # User authentication view
 │       │   │   └── Signup.tsx             # User registration view
 │       │   ├── components/        # UI Components
+│       │   │   ├── DoctorReportView.tsx   # 9-tab clinical doctor report with doctor-only sections
+│       │   │   ├── DownloadReportButton.tsx # Split-action instant multi-format download button
+│       │   │   ├── SessionReportView.tsx  # Shared clinical report modal view
 │       │   │   ├── SleepHypnogram.tsx     # Recharts hypnogram visualization (W, R, N1, N2, N3)
-│       │   │   ├── SensorChart.tsx        # Recharts time-series graphs for HR and EDA
+│       │   │   ├── SensorChart.tsx        # Recharts time-series graphs for HR, EDA, SpO2
 │       │   │   ├── RiskBadge.tsx          # Status indicator badge (LOW, MODERATE, HIGH)
 │       │   │   ├── SessionCard.tsx        # Night summary card component
 │       │   │   ├── ThemeToggle.tsx        # Dark/Light mode switch
@@ -189,24 +177,32 @@ SleepSenseAI/
 │
 ├── scripts/                       # Command-Line Executable Utilities
 │   ├── generate_synthetic_sleep.py # Generator for 1.2M+ row longitudinal observation CSV
+│   ├── generate_night_csv.py      # CLI generator for 1 Hz whole-night sensor CSVs
 │   └── run_spark_pipeline.py      # CLI script executing full PySpark batch pipeline
 │
-├── tests/                         # Automated Pytest Suite
+├── tests/                         # Automated Pytest Suite (42 Tests - 100% Passing)
 │   ├── conftest.py                # Shared pytest fixtures and test DB setup
 │   ├── test_sleep_score.py        # Unit tests for academic sleep score calculation
 │   ├── test_risk_analysis.py      # Unit tests for rule-based condition risk screening
 │   ├── test_recommendations.py    # Unit tests for explainable recommendation generator
 │   ├── test_alerts.py             # Unit tests for doctor alert persistence rules
-│   ├── test_report_builder.py     # Unit tests for JSON, CSV, and HTML report outputs
-│   ├── test_manual_sessions.py    # API integration tests for manual sleep recording
+│   ├── test_report_builder.py     # Unit tests for JSON, CSV, HTML, and PDF report outputs
+│   ├── test_report_download.py    # Multi-format report download gate verification
+│   ├── test_doctor_full_report.py # Doctor portal authorization & full clinical reporting gate
+│   ├── test_night_generator.py    # Synthetic 1 Hz sensor generation unit tests
+│   ├── test_night_pipeline.py     # Streaming PySpark epoching and EDA tests
+│   ├── test_night_upload.py       # API upload and CSV contract validation tests
+│   ├── test_phase4_e2e.py         # End-to-end clock-time hypnogram and EDA verification
+│   ├── test_manual_sessions.py    # API integration tests for preserved manual recording
 │   └── test_full_integration.py   # End-to-end integration test suite
 │
 ├── data/                          # Data Directories (Created / Managed at Runtime)
+│   ├── sample_data/               # Pre-packaged 1 Hz CSVs (healthy_night, apnea_night, fragmented)
 │   ├── synthetic/                 # Contains generated sleep_observations.csv
-│   ├── raw/                       # Raw session payloads (data/raw/manual/)
+│   ├── raw/                       # Raw session uploads
 │   └── parquet/                   # Processed PySpark Parquet output tables
 │
-├── reports/                       # Generated Doctor Reports
+├── reports/                       # Generated Clinical Reports
 │   └── generated/                 # Export directory for PDF/HTML report artifacts
 │
 ├── hardware/                      # Legacy ESP32 & RPi streaming scripts (Optional)
@@ -476,46 +472,53 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 | Method | Route | Description | Request Payload / Params | Response |
 | :--- | :--- | :--- | :--- | :--- |
-| `POST` | `/api/v1/sessions/manual` | Submit manual sleep session | `{user_id, date, sleep_efficiency, n3_fraction, rem_fraction, wake_fraction, screen_time, stress_level}` | `{"session_id": "...", "status": "PROCESSING"}` |
-| `GET` | `/api/v1/sessions/{sid}/analytics` | Poll session analytics result | `sid` (path) | `{"status": "COMPLETED", "sleep_score": 88.5, ...}` |
-| `GET` | `/api/v1/doctor/alerts` | List unhandled doctor alerts | None | `[{"id": 1, "patient_id": "U034", "alert_type": "...", "severity": "HIGH"}]` |
-| `POST` | `/api/v1/doctor/alerts/{id}/acknowledge` | Acknowledge alert | `id` (path) | `{"status": "acknowledged"}` |
-| `POST` | `/api/v1/doctor/alerts/{id}/resolve` | Resolve alert | `id` (path) | `{"status": "resolved"}` |
-| `GET` | `/api/v1/doctor/patients/{id}/report` | Generate patient summary | `patient_id` (path) | `{"patient_id": "U034", "nightly_history": [...], "alerts": [...]}` |
-| `GET` | `/api/v1/sessions/{sid}/report` | Export session report | `format=json\|csv\|html` | JSON object, CSV file, or rendered HTML page |
-| `GET` | `/api/v1/frontend/dashboard` | Dashboard summary payload | None | Dashboard stats, recent sessions, alert counters |
-| `GET` | `/api/v1/frontend/sessions/{sid}` | Frontend session detail | `sid` (path) | Detail metrics, hypnogram stages, HR/EDA series |
+| `POST` | `/api/v1/sessions/upload` | Ingest 1 Hz whole-night sensor CSV | `file` (multipart CSV), `user_id`, `session_id`, `notes` | `{"session_id": "...", "status": "processing"}` |
+| `GET` | `/api/v1/sessions/{sid}/status` | Poll night pipeline status & score | `sid` (path) | `{"status": "completed", "sleep_score": 87.2, "risk_level": "LOW"}` |
+| `GET` | `/api/v1/sessions/{sid}/timeline` | Retrieve clock-time hypnogram & sensor stream | `sid` (path) | Epochs (`stage`, `clock_time`), HR, EDA, SpO2 streams |
+| `GET` | `/api/v1/sessions/{sid}/report` | Export patient report as attachment | `format=json\|csv\|html\|pdf` | Downloadable attachment with `Content-Disposition` |
+| `GET` | `/api/v1/doctor/patients/{uid}/sessions` | Doctor: list assigned patient sessions | `uid` (path), Bearer Doctor JWT | Array of patient sessions with scores and risk profiles |
+| `GET` | `/api/v1/doctor/patients/{uid}/sessions/{sid}/report` | Doctor: full clinical report export | `uid`, `sid`, `format=json\|csv\|html\|pdf` | Clinical report with doctor-only notes, data quality, events |
+| `GET` | `/api/v1/doctor/alerts` | List unhandled multi-night alerts | Bearer Doctor JWT | `[{"id": 1, "patient_id": "U034", "alert_type": "...", "severity": "HIGH"}]` |
+| `POST` | `/api/v1/doctor/alerts/{id}/acknowledge` | Acknowledge clinical alert | `id` (path) | `{"status": "acknowledged"}` |
+| `POST` | `/api/v1/doctor/alerts/{id}/resolve` | Resolve clinical alert | `id` (path) | `{"status": "resolved"}` |
+| `POST` | `/api/v1/sessions/manual` | *(Deprecated)* Submit manual metrics | `{user_id, date, sleep_efficiency, ...}` | `{"session_id": "...", "status": "PROCESSING"}` |
 | `GET` | `/api/v1/health` | Health status check | None | `{"status": "healthy", "service": "SleepSense AI"}` |
 
 ---
 
 ## Automated Testing & Quality Verification
 
-SleepSense AI includes a test suite built with `pytest` covering units, algorithms, rule engines, API endpoints, and end-to-end integration workflows.
+SleepSense AI includes an exhaustive test suite built with `pytest` covering units, algorithms, rule engines, API endpoints, whole-night sensor pipelines, multi-format downloads, and doctor role authorization gates.
 
-### Run All Integration & Unit Tests
+### Run All Integration & Gate Tests (42 Tests - 100% Green)
 
 ```bash
-pytest tests/test_manual_sessions.py tests/test_alerts.py tests/test_report_builder.py tests/test_full_integration.py -v
+pytest tests/ -v
 ```
 
 ### Run Specialized Test Suites
 
 ```bash
-# Test Sleep Scoring Formula
-pytest tests/test_sleep_score.py -v
+# Phase 3 & 4: 1 Hz Synthetic Sensor Generator & Streaming Pipeline
+pytest tests/test_night_generator.py tests/test_night_pipeline.py tests/test_night_upload.py -v
 
-# Test Rule-Based Condition Risk Screening
-pytest tests/test_risk_analysis.py -v
+# Phase 4: Clock-Time Timeline & Hypnogram Verification
+pytest tests/test_phase4_e2e.py -v
 
-# Test Recommendation Engine
-pytest tests/test_recommendations.py -v
+# Phase 5: Multi-Format Clinical Report Download Gate (JSON, CSV, HTML, PDF)
+pytest tests/test_report_download.py tests/test_report_builder.py -v
+
+# Phase 6: Doctor Portal Full Report & Clinical Authorization Gate
+pytest tests/test_doctor_full_report.py tests/test_alerts.py -v
+
+# Algorithm Units: Sleep Scoring, Risk Screening & Recommendations
+pytest tests/test_sleep_score.py tests/test_risk_analysis.py tests/test_recommendations.py -v
 ```
 
 ### Python Syntax & Compile Verification
 
 ```bash
-python -m py_compile api/celery_app.py api/tasks.py api/routers/reports.py spark/pipeline.py analytics/sleep_score.py
+python -m py_compile api/celery_app.py api/tasks.py api/routers/reports.py api/routers/sessions.py spark/night_pipeline.py analytics/report_builder.py
 ```
 
 ---

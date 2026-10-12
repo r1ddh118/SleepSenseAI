@@ -1,13 +1,31 @@
 import type { RiskLevel } from "../data/mockData";
 
 interface RiskBadgeProps {
-  probability: number;
+  probability?: number;
+  risk?: "low" | "moderate" | "high" | string;
+  level?: "low" | "moderate" | "high" | string;
   size?: "sm" | "md" | "lg";
 }
 
-export function RiskBadge({ probability, size = "md" }: RiskBadgeProps) {
-  const level: RiskLevel =
-    probability < 0.3 ? "low" : probability < 0.65 ? "moderate" : "high";
+export function RiskBadge({ probability, risk, level: levelProp, size = "md" }: RiskBadgeProps) {
+  let level: RiskLevel = "low";
+  let probVal = probability;
+
+  if (probVal !== undefined) {
+    level = probVal < 0.3 ? "low" : probVal < 0.65 ? "moderate" : "high";
+  } else {
+    const raw = (risk || levelProp || "low").toLowerCase();
+    if (raw.includes("high")) {
+      level = "high";
+      probVal = 0.82;
+    } else if (raw.includes("mod")) {
+      level = "moderate";
+      probVal = 0.52;
+    } else {
+      level = "low";
+      probVal = 0.18;
+    }
+  }
 
   const colorClasses = {
     low: "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-300 dark:border-green-700",
@@ -34,7 +52,7 @@ export function RiskBadge({ probability, size = "md" }: RiskBadgeProps) {
             : "bg-red-500 dark:bg-red-400"
         }`}
       />
-      {level.toUpperCase()} RISK ({(probability * 100).toFixed(0)}%)
+      {level.toUpperCase()} RISK ({Math.round(probVal * 100)}%)
     </span>
   );
 }

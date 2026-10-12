@@ -57,3 +57,39 @@ def test_csv_report_contains_sections():
     sections = {row[0] for row in rows[1:]}
 
     assert set(REQUIRED_SECTIONS).issubset(sections)
+
+
+def test_pdf_report_and_eda_assessment_sections():
+    from analytics.report_builder import render_report_pdf
+
+    report = build_report_payload(
+        session_id="S001_EDA",
+        generated_at="2026-01-01T00:00:00",
+        patient_info={"patient_id": "U001", "session_id": "S001_EDA"},
+        sleep_summary={"sleep_score": 85.0, "sleep_efficiency": 92.0},
+        longitudinal_trend={"sleep_score_7d_avg": 81.0},
+        risk_assessment={"risk_level": "LOW", "risk_flags": []},
+        lifestyle={"screen_time": 30, "stress_level": 2},
+        recommendations=[{"area": "sleep", "message": "Maintain regular schedule"}],
+        alerts=[],
+        model_info={"model_name": "rules"},
+        eda_assessment={"tonic_eda_mean_us": 4.15, "phasic_peak_count": 120, "interpretation": "Normal autonomic tone"},
+        sensor_biometrics={"heart_rate_mean_bpm": 62.5, "spo2_mean_pct": 97.8},
+    )
+
+    assert "eda_assessment" in report["sections"]
+    assert "sensor_biometrics" in report["sections"]
+
+    html = render_report_html(report)
+    assert "Electrodermal Activity (EDA)" in html
+    assert "4.15" in html
+
+    csv_text = render_report_csv(report)
+    assert "eda_assessment" in csv_text
+    assert "sensor_biometrics" in csv_text
+
+    pdf_bytes = render_report_pdf(report)
+    assert isinstance(pdf_bytes, bytes)
+    assert len(pdf_bytes) > 500
+    assert pdf_bytes.startswith(b"%PDF")
+

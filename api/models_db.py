@@ -128,3 +128,57 @@ class SleepAnalytics(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
     session = relationship("Session", back_populates="sleep_analytics")
+
+
+class NightSession(Base):
+    __tablename__ = "night_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sid = Column(String, unique=True, index=True, nullable=False)
+    user_id = Column(String, index=True, nullable=False)
+    status = Column(String, default="queued", index=True)
+    file_path = Column(String, nullable=True)
+    duration_seconds = Column(Integer, nullable=True)
+    sleep_score = Column(Float, nullable=True)
+    risk_level = Column(String, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SessionEDA(Base):
+    __tablename__ = "session_eda"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String, unique=True, index=True, nullable=False)
+    user_id = Column(String, index=True, nullable=False)
+    num_samples = Column(Integer, nullable=True)
+    tonic_eda_mean_us = Column(Float, nullable=True)
+    phasic_peak_count = Column(Integer, nullable=True)
+    mean_peak_amplitude_us = Column(Float, nullable=True)
+    eda_json_path = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SessionReport(Base):
+    __tablename__ = "session_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String, index=True, nullable=False)
+    report_type = Column(String, default="session_full", index=True)
+    report_format = Column(String, default="json", index=True)
+    content = Column(Text, nullable=False)
+    disclaimer = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DoctorPatientAssignment(Base):
+    __tablename__ = "doctor_patient_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    patient_uid = Column(String, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    doctor = relationship("User")
+

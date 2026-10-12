@@ -1470,22 +1470,49 @@ Observed:
 7. Open the session card and confirm the detail page shows the selected
    session's HR, estimated EDA, hypnogram, sleep stages, and recommendations.
 
-## Step 16: Comprehensive Master Documentation & Overview
+## Step 16: Phase 3 & 4 - Synthetic 1 Hz Sensor Generation & Streaming Ingestion Pipeline
 
 ### What Was Done
+- Built `generate_night_sensor_csv` generating 1 Hz synthetic physiological and environmental recordings with continuous clock timestamps, cardiorespiratory oscillations, SpO2 dynamics, and realistic EDA.
+- Implemented `POST /api/v1/sessions/upload` handling CSV stream uploads with validation against the 13-column contract.
+- Built `spark/night_pipeline.py` performing streaming epoching, sleep stage inference (W, N1, N2, N3, R), respiratory disturbance detection, and autonomic EDA decomposition.
+- Created `tests/test_night_generator.py`, `tests/test_night_pipeline.py`, and `tests/test_night_upload.py`.
 
-- Updated `README.md` into an exhaustive master documentation guide covering:
-  - Project Purpose ("Why SleepSense AI?")
-  - System Overview ("What is SleepSense AI?")
-  - Complete File Structure & Directory Map
-  - Cross-Platform Setup & Execution Instructions (Linux, macOS, Windows with WSL2 and PowerShell)
-  - PySpark Pipeline execution commands
-  - 4-Terminal Live App Workflow (Redis + Celery + FastAPI + Vite)
-  - REST API endpoint specifications
-  - Automated testing & generated file management
-- Created `PROGRESS.md` as a clean executive progress document and verification summary.
+## Step 17: Phase 4 - Interactive Clock-Time Hypnogram & Timeline Visualization
 
-### Status
+### What Was Done
+- Connected the frontend timeline viewer (`SessionDetail.tsx`) to actual session clock times (`HH:MM:SS`), supporting UTC/local conversion.
+- Created 6-tab inspection view (Hypnogram, Timeline, Sensors, EDA, Risk, Recommendations).
+- Provided sample data downloads (`healthy_night.csv`, `apnea_night.csv`, `fragmented_night.csv`).
+- Verified with end-to-end integration test `tests/test_phase4_e2e.py`.
 
-The repository documentation is complete, accurate, and self-contained. Anyone reading the repository docs can understand the complete codebase architecture, pipeline mechanics, and cross-platform setup without inspecting raw code files directly.
+## Step 18: Phase 5 - Multi-Format Clinical Report Builder & Working Download
+
+### What Was Done
+- Extended `analytics/report_builder.py` with multi-engine PDF rendering (`xhtml2pdf`, `reportlab`, `weasyprint`).
+- Implemented `GET /api/v1/sessions/{sid}/report?format=json|csv|html|pdf` with `Content-Disposition: attachment` semantics.
+- Created split-action `DownloadReportButton.tsx` on the frontend with live blob creation and format menus.
+- Verified with `tests/test_report_download.py` confirming valid generation of all 4 formats.
+
+## Step 19: Phase 6 - Doctor Portal Full Report & Clinical Authorization
+
+### What Was Done
+- Added `DoctorPatientAssignment` model to enforce clinical patient assignment boundaries.
+- Created `GET /api/v1/doctor/patients/{uid}/sessions` and `GET /api/v1/doctor/patients/{uid}/sessions/{sid}/report`.
+- Enforced role checks (`_verify_doctor_patient_access`) returning 403 Forbidden for non-doctors or unassigned doctors.
+- Built 9-tab `DoctorReportView.tsx` with doctor-exclusive clinical sections (Clinical Notes, Data Quality, Events, Stages).
+- Integrated patient session selector and full report viewer into `DoctorDashboard.tsx`.
+- Verified with `tests/test_doctor_full_report.py`.
+
+## Step 20: Phase 7 - Master Documentation, Cleanup & Full Regression
+
+### What Was Done
+- Updated master `README.md` to document the new 6-stage clinical architecture (Generate, Upload, Process, EDA, Report, Doctor).
+- Synchronized `PROGRESS.md` and `MIGRATION_PROGRESS.md` across all 20 steps.
+- Marked legacy `POST /api/v1/sessions/manual` endpoint as `deprecated=True` while maintaining headless compatibility; removed manual-entry UI paths.
+- Ran full regression: **42/42 tests passing** (100% test suite green).
+- Validated Vite frontend production build (`npm run build`).
+- Confirmed live 4-terminal execution readiness (Redis, Celery, FastAPI, Vite).
+
+
 

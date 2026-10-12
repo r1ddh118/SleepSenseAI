@@ -21,4 +21,5 @@ export function Dashboard() {
   }
 
   // Default dashboard for demo/admin users
+  return <PatientDashboard />;
 }
